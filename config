@@ -1,0 +1,18 @@
+ngx_module_type=HTTP
+ngx_module_name=ngx_http_grpc_client_module
+ngx_module_srcs=" \
+    $ngx_addon_dir/src/ngx_http_grpc_client.c \
+"
+ngx_module_deps=" \
+"
+ngx_module_incs=" \
+    $ngx_addon_dir/src \
+"
+
+ngx_module_libs=" \
+    -L$ngx_addon_dir/grpc-engine -Wl,--whole-archive -lgrpc_engine -Wl,--no-whole-archive\
+"
+
+. auto/module
+
+ngx_addon_name=$ngx_module_name
