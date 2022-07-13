@@ -8,13 +8,18 @@ local NGX_OK = ngx.OK
 
 
 ffi.cdef[[
-void
-ngx_http_grpc_cli_r(void *hd);
+int
+ngx_http_grpc_cli_is_engine_inited(void);
 void *
 ngx_http_grpc_cli_connect(ngx_http_request_t *r);
 void
 ngx_http_grpc_cli_close(ngx_http_request_t *r, void *ctx);
 ]]
+
+if C.ngx_http_grpc_cli_is_engine_inited() == 0 then
+    error("The gRPC client engine is not initialized. " ..
+          "Need to configure 'grpc_client_engine_path' in the nginx.conf.")
+end
 
 
 local _M = {}

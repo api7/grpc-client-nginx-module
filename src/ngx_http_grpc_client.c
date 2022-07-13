@@ -155,6 +155,16 @@ static void ngx_http_grpc_cli_exit_worker(ngx_cycle_t *cycle)
 }
 
 
+int
+ngx_http_grpc_cli_is_engine_inited(void)
+{
+    ngx_http_grpc_cli_main_conf_t *gccf;
+
+    gccf = ngx_http_cycle_get_module_main_conf(ngx_cycle, ngx_http_grpc_client_module);
+    return gccf->engine != NULL;
+}
+
+
 void *
 ngx_http_grpc_cli_connect(ngx_http_request_t *r)
 {
