@@ -1,8 +1,25 @@
 local protoc = require("protoc")
 local pb = require("pb")
+local base = require("resty.core.base")
+local get_request = base.get_request
+local ffi = require("ffi")
+local C = ffi.C
+local NGX_OK = ngx.OK
+
+
+ffi.cdef[[
+void
+ngx_http_grpc_cli_r(void *hd);
+void *
+ngx_http_grpc_cli_connect(ngx_http_request_t *r);
+void
+ngx_http_grpc_cli_close(ngx_http_request_t *r, void *ctx);
+]]
 
 
 local _M = {}
+local Conn = {}
+local mt = {__index = Conn}
 local protoc_inst
 local current_pb_state
 
@@ -37,6 +54,27 @@ function _M.load(path, filename)
     return true
 end
 
+function _M.connect(ip)
+    local conn = {}
+    local r = get_request()
+    conn.r = r
+
+    local ctx = C.ngx_http_grpc_cli_connect(r)
+    if ctx == nil then
+        return nil
+    end
+    conn.ctx = ctx
+
+    return setmetatable(conn, mt)
+end
+
+
+function Conn:close()
+    local r = self.r
+    local ctx = self.ctx
+    C.ngx_http_grpc_cli_close(r, ctx)
+end
+
 
 local function _stub(encoded, m)
     local ok, encoded = pcall(pb.encode, m.output_type, {header = {revision = 1}})
@@ -61,7 +99,7 @@ local function call_with_pb_state(m, req)
 end
 
 
-function _M.call(service, method, req)
+function Conn:call(service, method, req)
     local serv = protoc_inst.index[service]
     if not serv then
         return nil, string.format("service %s not found", service)
