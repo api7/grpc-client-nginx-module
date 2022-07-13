@@ -11,7 +11,8 @@ ffi.cdef[[
 int
 ngx_http_grpc_cli_is_engine_inited(void);
 void *
-ngx_http_grpc_cli_connect(char *err_buf, ngx_http_request_t *r);
+ngx_http_grpc_cli_connect(char *err_buf, ngx_http_request_t *r,
+                          const char *target_data, int target_len);
 void
 ngx_http_grpc_cli_close(ngx_http_request_t *r, void *ctx);
 ]]
@@ -62,12 +63,13 @@ function _M.load(path, filename)
     return true
 end
 
-function _M.connect(ip)
+function _M.connect(target)
     local conn = {}
     local r = get_request()
     conn.r = r
 
-    local ctx = C.ngx_http_grpc_cli_connect(err_buf, r)
+    -- grpc-go dials the target in non-blocking way
+    local ctx = C.ngx_http_grpc_cli_connect(err_buf, r, target, #target)
     if ctx == nil then
         return nil, ffi.string(err_buf)
     end
@@ -91,7 +93,7 @@ local function _stub(encoded, m)
 end
 
 
-local function call_with_pb_state(m, req)
+local function call_with_pb_state(m, path, req)
     local ok, encoded = pcall(pb.encode, m.input_type, req)
     if not ok then
         return nil, "failed to encode: " .. encoded
@@ -118,8 +120,10 @@ function Conn:call(service, method, req)
         return nil, string.format("method %s not found", method)
     end
 
+    local path = string.format("/%s/%s", service, method)
+
     pb.state(current_pb_state)
-    local res, err = call_with_pb_state(m, req)
+    local res, err = call_with_pb_state(m, path, req)
     pb.state(nil)
 
     if not res then

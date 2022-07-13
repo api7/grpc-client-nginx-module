@@ -3,6 +3,9 @@ package conn
 import "testing"
 
 func TestConnLifeCycle(t *testing.T) {
-	conn := Connect()
+	conn, err := Connect("localhost:2379")
+	if err != nil {
+		t.FailNow()
+	}
 	Close(conn)
 }

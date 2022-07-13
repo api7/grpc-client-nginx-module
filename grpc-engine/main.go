@@ -28,20 +28,23 @@ type EngineCtx struct {
 
 var EngineCtxRef = map[unsafe.Pointer]*EngineCtx{}
 
-func reportErr(err error, errBuf *C.char) {
+func reportErr(err error, errBuf unsafe.Pointer) {
 	s := err.Error()
 	if len(s) > ERR_BUF_SIZE-1 {
 		s = s[:ERR_BUF_SIZE-1]
 	}
 
-	pp := (*[1 << 30]byte)(unsafe.Pointer(errBuf))
+	pp := (*[1 << 30]byte)(errBuf)
 	copy(pp[:], s)
 	pp[len(s)] = 0
 }
 
 //export grpc_engine_connect
-func grpc_engine_connect(errBuf *C.char) unsafe.Pointer {
-	c, err := conn.Connect()
+func grpc_engine_connect(errBuf unsafe.Pointer,
+	targetData unsafe.Pointer, targetLen C.int) unsafe.Pointer {
+
+	target := string(C.GoBytes(targetData, targetLen))
+	c, err := conn.Connect(target)
 	if err != nil {
 		reportErr(err, errBuf)
 		return nil

@@ -28,7 +28,7 @@ static void ngx_http_grpc_cli_exit_worker(ngx_cycle_t *cycle);
 static void *ngx_http_grpc_cli_create_main_conf(ngx_conf_t *cf);
 static char *ngx_http_grpc_cli_engine_path(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
-static void *(*grpc_engine_connect) (char *err_buf);
+static void *(*grpc_engine_connect) (char *, const char *, int);
 static void (*grpc_engine_close) (void *ref);
 
 
@@ -166,14 +166,15 @@ ngx_http_grpc_cli_is_engine_inited(void)
 
 
 void *
-ngx_http_grpc_cli_connect(char *err_buf, ngx_http_request_t *r)
+ngx_http_grpc_cli_connect(char *err_buf, ngx_http_request_t *r,
+                          const char *target_data, int target_len)
 {
     void        *ctx;
 
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "create gRPC connection");
 
-    ctx = grpc_engine_connect(err_buf);
+    ctx = grpc_engine_connect(err_buf, target_data, target_len);
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "new gRPC ctx: %p", ctx);
