@@ -7,17 +7,17 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-func Connect() *grpc.ClientConn {
+func Connect() (*grpc.ClientConn, error) {
 	conn, err := grpc.Dial("localhost:2379",
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		// connect timeout
 		grpc.WithTimeout(60*time.Second),
 	)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
-	return conn
+	return conn, nil
 }
 
 func Close(c *grpc.ClientConn) {

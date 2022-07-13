@@ -11,7 +11,7 @@ ffi.cdef[[
 int
 ngx_http_grpc_cli_is_engine_inited(void);
 void *
-ngx_http_grpc_cli_connect(ngx_http_request_t *r);
+ngx_http_grpc_cli_connect(char *err_buf, ngx_http_request_t *r);
 void
 ngx_http_grpc_cli_close(ngx_http_request_t *r, void *ctx);
 ]]
@@ -25,8 +25,11 @@ end
 local _M = {}
 local Conn = {}
 local mt = {__index = Conn}
+
 local protoc_inst
 local current_pb_state
+
+local err_buf = ffi.new("char[512]")
 
 
 function _M.load(path, filename)
@@ -64,9 +67,9 @@ function _M.connect(ip)
     local r = get_request()
     conn.r = r
 
-    local ctx = C.ngx_http_grpc_cli_connect(r)
+    local ctx = C.ngx_http_grpc_cli_connect(err_buf, r)
     if ctx == nil then
-        return nil
+        return nil, ffi.string(err_buf)
     end
     conn.ctx = ctx
 
