@@ -29,7 +29,9 @@ static void *ngx_http_grpc_cli_create_main_conf(ngx_conf_t *cf);
 static char *ngx_http_grpc_cli_engine_path(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
 static void *(*grpc_engine_connect) (char *, const char *, int);
-static void (*grpc_engine_close) (void *ref);
+static void *(*grpc_engine_call)(char *, void *, const char *, int, const char *, int, int*);
+static void (*grpc_engine_close) (void *);
+static void (*grpc_engine_free) (void *);
 
 
 static ngx_command_t ngx_http_grpc_cli_cmds[] = {
@@ -139,6 +141,8 @@ ngx_http_grpc_cli_init_worker(ngx_cycle_t *cycle)
 
     must_resolve_symbol(gccf->engine, grpc_engine_connect);
     must_resolve_symbol(gccf->engine, grpc_engine_close);
+    must_resolve_symbol(gccf->engine, grpc_engine_free);
+    must_resolve_symbol(gccf->engine, grpc_engine_call);
 
     return NGX_OK;
 }
@@ -192,4 +196,31 @@ ngx_http_grpc_cli_close(ngx_http_request_t *r, void *ctx)
                    "free gRPC ctx: %p", ctx);
 
     grpc_engine_close(ctx);
+}
+
+
+int
+ngx_http_grpc_cli_call(char *err_buf, void *ctx,
+                       const char *method_data, int method_len,
+                       const char *req_data, int req_len,
+                       ngx_str_t *resp)
+{
+    int         resp_len;
+    u_char     *out;
+
+    out = grpc_engine_call(err_buf, ctx, method_data, method_len, req_data, req_len, &resp_len);
+    if (out == NULL) {
+        return NGX_ERROR;
+    }
+
+    resp->data = out;
+    resp->len = resp_len;
+    return NGX_OK;
+}
+
+
+void
+ngx_http_grpc_cli_free(void *data)
+{
+    grpc_engine_free(data);
 }

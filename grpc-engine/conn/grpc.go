@@ -1,6 +1,7 @@
 package conn
 
 import (
+	"bytes"
 	"context"
 	"time"
 
@@ -26,6 +27,11 @@ func Close(c *grpc.ClientConn) {
 	c.Close()
 }
 
-func Call(c *grpc.ClientConn, method string) error {
-	return c.Invoke(context.Background(), method, nil, nil)
+func Call(c *grpc.ClientConn, method string, req []byte) ([]byte, error) {
+	out := &bytes.Buffer{}
+	err := c.Invoke(context.Background(), method, req, out)
+	if err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
 }

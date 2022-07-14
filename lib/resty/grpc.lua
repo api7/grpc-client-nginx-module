@@ -15,6 +15,13 @@ ngx_http_grpc_cli_connect(char *err_buf, ngx_http_request_t *r,
                           const char *target_data, int target_len);
 void
 ngx_http_grpc_cli_close(ngx_http_request_t *r, void *ctx);
+int
+ngx_http_grpc_cli_call(char *err_buf, void *ctx,
+                       const char *method_data, int method_len,
+                       const char *req_data, int req_len,
+                       ngx_str_t *resp);
+void
+ngx_http_grpc_cli_free(void *data);
 ]]
 
 if C.ngx_http_grpc_cli_is_engine_inited() == 0 then
@@ -31,6 +38,7 @@ local protoc_inst
 local current_pb_state
 
 local err_buf = ffi.new("char[512]")
+local str_buf = ffi.new("ngx_str_t[1]")
 
 
 function _M.load(path, filename)
@@ -93,14 +101,22 @@ local function _stub(encoded, m)
 end
 
 
-local function call_with_pb_state(m, path, req)
+local function call_with_pb_state(ctx, m, path, req)
     local ok, encoded = pcall(pb.encode, m.input_type, req)
     if not ok then
         return nil, "failed to encode: " .. encoded
     end
 
-    local mock = _stub(encoded, m)
-    local ok, decoded = pcall(pb.decode, m.output_type, mock)
+    local rc = C.ngx_http_grpc_cli_call(err_buf, ctx, path, #path, encoded, #encoded, str_buf)
+    if rc ~= NGX_OK then
+        local err = ffi.string(err_buf)
+        return nil, "failed to call: " .. err
+    end
+
+    local str = str_buf[0]
+    local resp = ffi.string(str.data, str.len)
+    local ok, decoded = pcall(pb.decode, m.output_type, resp)
+    C.ngx_http_grpc_cli_free(ffi.cast("void*", str.data))
     if not ok then
         return nil, "failed to decode: " .. decoded
     end
@@ -123,7 +139,7 @@ function Conn:call(service, method, req)
     local path = string.format("/%s/%s", service, method)
 
     pb.state(current_pb_state)
-    local res, err = call_with_pb_state(m, path, req)
+    local res, err = call_with_pb_state(self.ctx, m, path, req)
     pb.state(nil)
 
     if not res then

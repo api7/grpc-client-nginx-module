@@ -14,7 +14,9 @@ location /t {
 
         local conn = assert(gcli.connect("127.0.0.1:2379"))
         local res = conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'v'})
-        ngx.say(res.header.revision)
+        local old = res.header.revision
+        local res = conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'c'})
+        ngx.say(res.header.revision - old)
         conn:close()
     }
 }

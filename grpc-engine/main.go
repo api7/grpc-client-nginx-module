@@ -7,6 +7,8 @@ package main
 import "C"
 import (
 	"errors"
+	"log"
+	"os"
 	"unsafe"
 
 	"google.golang.org/grpc"
@@ -15,6 +17,15 @@ import (
 )
 
 func main() {
+}
+
+func init() {
+	// only keep the latest debug log
+	f, err := os.OpenFile("/tmp/grpc-engine-debug.log", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		panic(err)
+	}
+	log.Default().SetOutput(f)
 }
 
 const (
@@ -71,4 +82,31 @@ func grpc_engine_close(ref unsafe.Pointer) {
 
 	delete(EngineCtxRef, ref)
 	C.free(ref)
+}
+
+//export grpc_engine_call
+func grpc_engine_call(errBuf unsafe.Pointer, ref unsafe.Pointer,
+	methodData unsafe.Pointer, methodLen C.int,
+	reqData unsafe.Pointer, reqLen C.int,
+	respLen *C.int,
+) unsafe.Pointer {
+	method := string(C.GoBytes(methodData, methodLen))
+	req := C.GoBytes(reqData, reqLen)
+	ctx := EngineCtxRef[ref]
+	c := ctx.c
+
+	out, err := conn.Call(c, method, req)
+	if err != nil {
+		reportErr(err, errBuf)
+		return nil
+	}
+
+	// CBytes doesn't contain len info
+	*respLen = C.int(len(out))
+	return C.CBytes(out)
+}
+
+//export grpc_engine_free
+func grpc_engine_free(ptr unsafe.Pointer) {
+	C.free(ptr)
 }
