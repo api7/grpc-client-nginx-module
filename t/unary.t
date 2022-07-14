@@ -10,7 +10,7 @@ __DATA__
 location /t {
     content_by_lua_block {
         local gcli = require("resty.grpc")
-        assert(gcli.load("t/testdata", "rpc.proto"))
+        assert(gcli.load("t/testdata/rpc.proto"))
 
         local conn = assert(gcli.connect("127.0.0.1:2379"))
         local res = conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'v'})
@@ -27,3 +27,31 @@ qr/(create|close) gRPC connection/
 --- grep_error_log_out
 create gRPC connection
 close gRPC connection
+
+
+
+=== TEST 2: call repeatedly
+--- config
+location /t {
+    content_by_lua_block {
+        local gcli = require("resty.grpc")
+        assert(gcli.load("t/testdata/rpc.proto"))
+
+        local conn = assert(gcli.connect("127.0.0.1:2379"))
+        for i = 1, 3 do
+            assert(conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'v'}))
+            local res = conn:call("etcdserverpb.KV", "Range", {key = 'k', range_end = 'ka', revision = 0})
+            local kv = res.kvs[1]
+            ngx.say(kv.key, " ", kv.value)
+            local res = conn:call("etcdserverpb.KV", "DeleteRange", {key = 'k', range_end = 'ka'})
+            ngx.say(res.deleted)
+        end
+    }
+}
+--- response_body
+k v
+1
+k v
+1
+k v
+1

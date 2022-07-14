@@ -186,8 +186,6 @@ ngx_http_grpc_cli_connect(char *err_buf, ngx_http_request_t *r,
         return NULL;
     }
 
-    ctx->closed = 0;
-
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "create gRPC connection");
 

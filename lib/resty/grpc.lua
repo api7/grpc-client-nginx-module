@@ -41,7 +41,7 @@ local err_buf = ffi.new("char[512]")
 local str_buf = ffi.new("ngx_str_t[1]")
 
 
-function _M.load(path, filename)
+function _M.load(filename)
     if not protoc_inst then
         -- initialize protoc compiler
         pb.state(nil)
@@ -52,7 +52,6 @@ function _M.load(path, filename)
     end
 
     pb.state(current_pb_state)
-    protoc_inst:addpath(path)
     local ok, err = pcall(protoc_inst.loadfile, protoc_inst, filename)
     if not ok then
         return nil, "failed to load protobuf: " .. err

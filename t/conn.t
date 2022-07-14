@@ -54,7 +54,7 @@ ok
 location /t {
     content_by_lua_block {
         local gcli = require("resty.grpc")
-        assert(gcli.load("t/testdata", "rpc.proto"))
+        assert(gcli.load("t/testdata/rpc.proto"))
 
         local conn = assert(gcli.connect("127.0.0.1:2379"))
         conn:close()

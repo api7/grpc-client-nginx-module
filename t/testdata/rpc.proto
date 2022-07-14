@@ -1,8 +1,6 @@
 syntax = "proto3";
 package etcdserverpb;
 
-import "kv.proto";
-
 service KV {
   // Range gets the keys in the range from the key-value store.
   rpc Range(RangeRequest) returns (RangeResponse) {}
@@ -99,11 +97,30 @@ message RangeRequest {
   int64 max_create_revision = 13;
 }
 
+message KeyValue {
+  // key is the key in bytes. An empty key is not allowed.
+  bytes key = 1;
+  // create_revision is the revision of last creation on this key.
+  int64 create_revision = 2;
+  // mod_revision is the revision of last modification on this key.
+  int64 mod_revision = 3;
+  // version is the version of the key. A deletion resets
+  // the version to zero and any modification of the key
+  // increases its version.
+  int64 version = 4;
+  // value is the value held by the key, in bytes.
+  bytes value = 5;
+  // lease is the ID of the lease that attached to key.
+  // When the attached lease expires, the key will be deleted.
+  // If lease is 0, then no lease is attached to the key.
+  int64 lease = 6;
+}
+
 message RangeResponse {
   ResponseHeader header = 1;
   // kvs is the list of key-value pairs matched by the range request.
   // kvs is empty when count is requested.
-  repeated mvccpb.KeyValue kvs = 2;
+  repeated KeyValue kvs = 2;
   // more indicates if there are more keys to return in the requested range.
   bool more = 3;
   // count is set to the number of keys within the range when requested.
@@ -135,7 +152,7 @@ message PutRequest {
 message PutResponse {
   ResponseHeader header = 1;
   // if prev_kv is set in the request, the previous key-value pair will be returned.
-  mvccpb.KeyValue prev_kv = 2;
+  KeyValue prev_kv = 2;
 }
 
 message DeleteRangeRequest {
@@ -158,5 +175,5 @@ message DeleteRangeResponse {
   // deleted is the number of keys deleted by the delete range request.
   int64 deleted = 2;
   // if prev_kv is set in the request, the previous key-value pairs will be returned.
-  repeated mvccpb.KeyValue prev_kvs = 3;
+  repeated KeyValue prev_kvs = 3;
 }
