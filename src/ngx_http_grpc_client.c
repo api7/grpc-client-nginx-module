@@ -10,6 +10,11 @@ typedef struct {
 } ngx_http_grpc_cli_main_conf_t;
 
 
+typedef struct {
+    void                *engine_ctx;
+} ngx_http_grpc_cli_ctx_t;
+
+
 #define must_resolve_symbol(hd, f) \
     f = dlsym(hd, #f); \
     err = dlerror(); \
@@ -173,42 +178,74 @@ void *
 ngx_http_grpc_cli_connect(char *err_buf, ngx_http_request_t *r,
                           const char *target_data, int target_len)
 {
-    void        *ctx;
+    void                    *engine_ctx;
+    ngx_http_grpc_cli_ctx_t *ctx;
+
+    ctx = ngx_alloc(sizeof(ngx_http_grpc_cli_ctx_t), r->connection->log);
+    if (ctx == NULL) {
+        return NULL;
+    }
+
+    ctx->closed = 0;
 
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "create gRPC connection");
 
-    ctx = grpc_engine_connect(err_buf, target_data, target_len);
+    engine_ctx = grpc_engine_connect(err_buf, target_data, target_len);
+    if (engine_ctx == NULL) {
+        goto free_ctx;
+    }
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "new gRPC ctx: %p", ctx);
+                   "new gRPC ctx: %p", engine_ctx);
 
+    ctx->engine_ctx = engine_ctx;
     return ctx;
+
+free_ctx:
+    ngx_free(ctx);
+    return NULL;
 }
 
 
 void
-ngx_http_grpc_cli_close(ngx_http_request_t *r, void *ctx)
+ngx_http_grpc_cli_close(ngx_http_request_t *r, ngx_http_grpc_cli_ctx_t *ctx)
 {
-    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "close gRPC connection");
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "free gRPC ctx: %p", ctx);
+    ngx_log_t           *log;
+    void                *engine_ctx;
 
-    grpc_engine_close(ctx);
+    if (r == NULL) {
+        log = ngx_cycle->log;
+    } else {
+        log = r->connection->log;
+    }
+
+    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, log, 0, "close gRPC connection");
+
+    engine_ctx = ctx->engine_ctx;
+    ngx_free(ctx);
+
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, log, 0, "free gRPC ctx: %p", engine_ctx);
+
+    grpc_engine_close(engine_ctx);
 }
 
 
 int
-ngx_http_grpc_cli_call(char *err_buf, void *ctx,
+ngx_http_grpc_cli_call(char *err_buf, ngx_http_grpc_cli_ctx_t *ctx,
                        const char *method_data, int method_len,
                        const char *req_data, int req_len,
                        ngx_str_t *resp)
 {
-    int         resp_len;
-    u_char     *out;
+    int                  resp_len;
+    u_char              *out;
+    void                *engine_ctx;
 
-    out = grpc_engine_call(err_buf, ctx, method_data, method_len, req_data, req_len, &resp_len);
+    engine_ctx = ctx->engine_ctx;
+    out = grpc_engine_call(err_buf, engine_ctx,
+                           method_data, method_len,
+                           req_data, req_len,
+                           &resp_len);
     if (out == NULL) {
         return NGX_ERROR;
     }

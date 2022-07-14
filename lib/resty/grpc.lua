@@ -71,6 +71,12 @@ function _M.load(path, filename)
     return true
 end
 
+
+local function ctx_gc_handler(ctx)
+    C.ngx_http_grpc_cli_close(nil, ctx)
+end
+
+
 function _M.connect(target)
     local conn = {}
     local r = get_request()
@@ -81,6 +87,7 @@ function _M.connect(target)
     if ctx == nil then
         return nil, ffi.string(err_buf)
     end
+    ffi.gc(ctx, ctx_gc_handler)
     conn.ctx = ctx
 
     return setmetatable(conn, mt)
@@ -89,7 +96,14 @@ end
 
 function Conn:close()
     local r = self.r
+
     local ctx = self.ctx
+    if not self.ctx then
+        return
+    end
+
+    self.ctx = nil
+    ffi.gc(ctx, nil)
     C.ngx_http_grpc_cli_close(r, ctx)
 end
 
@@ -126,6 +140,14 @@ end
 
 
 function Conn:call(service, method, req)
+    if protoc_inst == nil then
+        return nil, "proto files not loaded"
+    end
+
+    if self.ctx == nil then
+        return nil, "closed"
+    end
+
     local serv = protoc_inst.index[service]
     if not serv then
         return nil, string.format("service %s not found", service)
