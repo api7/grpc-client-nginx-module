@@ -108,13 +108,6 @@ function Conn:close()
 end
 
 
-local function _stub(encoded, m)
-    local ok, encoded = pcall(pb.encode, m.output_type, {header = {revision = 1}})
-    assert(ok)
-    return encoded
-end
-
-
 local function call_with_pb_state(ctx, m, path, req)
     local ok, encoded = pcall(pb.encode, m.input_type, req)
     if not ok then
