@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/api7/grpc-client-nginx-module/conn"
+	"github.com/api7/grpc-client-nginx-module/task"
 )
 
 func main() {
@@ -101,6 +102,10 @@ func grpc_engine_call(errBuf unsafe.Pointer, ref unsafe.Pointer,
 		return nil
 	}
 
+	go func() {
+		task.ReportFinishedTask(12345678)
+	}()
+
 	// CBytes doesn't contain len info
 	*respLen = C.int(len(out))
 	return C.CBytes(out)
@@ -109,4 +114,11 @@ func grpc_engine_call(errBuf unsafe.Pointer, ref unsafe.Pointer,
 //export grpc_engine_free
 func grpc_engine_free(ptr unsafe.Pointer) {
 	C.free(ptr)
+}
+
+//export grpc_engine_wait
+func grpc_engine_wait(taskNum *C.int) unsafe.Pointer {
+	out := task.WaitFinishedTasks()
+	*taskNum = C.int(len(out)) / 8
+	return C.CBytes(out)
 }

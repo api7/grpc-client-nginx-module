@@ -4,6 +4,11 @@
 #include <ngx_http.h>
 
 
+#if (!NGX_THREADS)
+#error "this module requires to be compiled with --with-thread option"
+#endif
+
+
 typedef struct {
     ngx_str_t            engine_path;
     void                *engine;
@@ -13,6 +18,24 @@ typedef struct {
 typedef struct {
     void                *engine_ctx;
 } ngx_http_grpc_cli_ctx_t;
+
+
+typedef struct {
+    ngx_queue_t                 queue;
+    uint64_t                    task_id;
+} ngx_http_grpc_cli_posted_event_ctx_t;
+
+
+typedef struct {
+    ngx_thread_task_t       *task;
+    ngx_thread_pool_t       *thread_pool;
+    uint64_t                *finished_tasks;
+    int                      finished_task_num;
+
+    ngx_event_t             *posted_ev;
+    ngx_queue_t              occupied;
+    ngx_queue_t              free;
+} ngx_http_grpc_cli_thread_ctx_t;
 
 
 #define must_resolve_symbol(hd, f) \
@@ -34,10 +57,13 @@ static void *ngx_http_grpc_cli_create_main_conf(ngx_conf_t *cf);
 static char *ngx_http_grpc_cli_engine_path(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
 static void *(*grpc_engine_connect) (char *, const char *, int);
-static void *(*grpc_engine_call)(char *, void *, const char *, int, const char *, int, int*);
+static void *(*grpc_engine_call)(char *, void *, const char *, int, const char *, int, int *);
 static void (*grpc_engine_close) (void *);
 static void (*grpc_engine_free) (void *);
+static uint64_t *(*grpc_engine_wait) (int *);
 
+
+static ngx_str_t thread_pool_name = ngx_string("grpc-client-nginx-module");
 
 static ngx_command_t ngx_http_grpc_cli_cmds[] = {
     { ngx_string("grpc_client_engine_path"),
@@ -122,6 +148,146 @@ ngx_http_grpc_cli_create_main_conf(ngx_conf_t *cf)
 }
 
 
+static void
+ngx_http_grpc_cli_thread_handler(void *data, ngx_log_t *log)
+{
+    ngx_http_grpc_cli_thread_ctx_t     *thctx = data;
+
+    thctx->finished_tasks = grpc_engine_wait(&thctx->finished_task_num);
+}
+
+
+static void
+ngx_http_grpc_cli_insert_posted_event_ctx(ngx_http_grpc_cli_thread_ctx_t *thctx,
+                                          ngx_log_t *log, uint64_t task_id)
+{
+    ngx_http_grpc_cli_posted_event_ctx_t        *ctx;
+
+    if (!ngx_queue_empty(&thctx->free)) {
+        ngx_queue_t         *q;
+
+        q = ngx_queue_head(&thctx->free);
+        ngx_queue_remove(q);
+        ctx = ngx_queue_data(q, ngx_http_grpc_cli_posted_event_ctx_t, queue);
+
+    } else {
+        ctx = ngx_pcalloc(ngx_cycle->pool, sizeof(ngx_http_grpc_cli_posted_event_ctx_t));
+        if (ctx == NULL) {
+            ngx_log_error(NGX_LOG_ERR, log, 0, "no memory");
+            return;
+        }
+    }
+
+    ctx->task_id = task_id;
+    ngx_queue_insert_tail(&thctx->occupied, &ctx->queue);
+
+    ngx_log_debug2(NGX_LOG_DEBUG_HTTP, log, 0, "post finished task %uL, ctx:%p",
+                   task_id, ctx);
+}
+
+
+static void
+ngx_http_grpc_cli_thread_event_handler(ngx_event_t *ev)
+{
+    int                               i;
+    ngx_http_grpc_cli_thread_ctx_t   *thctx;
+    ngx_thread_pool_t                 *thread_pool;
+    ngx_thread_task_t                 *task;
+
+    thctx = ev->data;
+
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, ev->log, 0, "post %d finished task",
+                   thctx->finished_task_num);
+
+    for (i = 0; i < thctx->finished_task_num; i++) {
+        ngx_http_grpc_cli_insert_posted_event_ctx(thctx, ev->log, thctx->finished_tasks[i]);
+        ngx_post_event(thctx->posted_ev, &ngx_posted_events);
+    }
+
+    grpc_engine_free(thctx->finished_tasks);
+    thctx->finished_tasks = NULL;
+
+    thread_pool = thctx->thread_pool;
+    task = thctx->task;
+
+    if (ngx_thread_task_post(thread_pool, task) != NGX_OK) {
+        ngx_log_error(NGX_LOG_EMERG, ngx_cycle->log, 0,
+                      "failed to wait gRPC engine: task post failed");
+        return;
+    }
+}
+
+
+static void
+ngx_http_grpc_cli_thread_post_event_handler(ngx_event_t *ev)
+{
+    ngx_http_grpc_cli_thread_ctx_t   *thctx = ev->data;
+    ngx_log_t                        *log = ev->log;
+    ngx_queue_t                      *q;
+
+    ngx_http_grpc_cli_posted_event_ctx_t        *ctx;
+
+    if (ngx_queue_empty(&thctx->occupied)) {
+        return;
+    }
+
+    q = ngx_queue_head(&thctx->occupied);
+    ngx_queue_remove(q);
+    ngx_queue_insert_tail(&thctx->free, q);
+    ctx = ngx_queue_data(q, ngx_http_grpc_cli_posted_event_ctx_t, queue);
+
+    ngx_log_debug2(NGX_LOG_DEBUG_HTTP, log, 0, "resume finished task %uL, ctx:%p",
+                   ctx->task_id, ctx);
+}
+
+
+static ngx_int_t
+ngx_http_grpc_cli_thread(ngx_cycle_t *cycle)
+{
+    ngx_thread_pool_t                  *thread_pool;
+    ngx_thread_task_t                  *task;
+    ngx_http_grpc_cli_thread_ctx_t     *thctx;
+
+    thread_pool = ngx_thread_pool_get(cycle, &thread_pool_name);
+    if (thread_pool == NULL) {
+        ngx_log_error(NGX_LOG_EMERG, cycle->log, 0,
+                      "failed to init engine: missing thread pool %V", &thread_pool_name);
+        return NGX_ERROR;
+    }
+
+    task = ngx_thread_task_alloc(cycle->pool,
+                                 sizeof(ngx_http_grpc_cli_thread_ctx_t));
+    if (task == NULL) {
+        ngx_log_error(NGX_LOG_EMERG, cycle->log, 0,
+                      "failed to init engine: no memory");
+        return NGX_ERROR;
+    }
+
+    thctx = task->ctx;
+    thctx->task = task;
+    thctx->thread_pool = thread_pool;
+    thctx->posted_ev = ngx_pcalloc(cycle->pool, sizeof(ngx_event_t));
+    thctx->posted_ev->handler = ngx_http_grpc_cli_thread_post_event_handler;
+    thctx->posted_ev->data = thctx;
+    thctx->posted_ev->log = cycle->log;
+    ngx_queue_init(&thctx->free);
+    ngx_queue_init(&thctx->occupied);
+
+    task->handler = ngx_http_grpc_cli_thread_handler;
+    task->event.handler = ngx_http_grpc_cli_thread_event_handler;
+    task->event.data = thctx;
+    task->event.log = cycle->log;
+
+    if (ngx_thread_task_post(thread_pool, task) != NGX_OK) {
+        ngx_log_error(NGX_LOG_EMERG, cycle->log, 0,
+                      "failed to init engine: task post failed");
+        return NGX_ERROR;
+    }
+
+    return NGX_OK;
+}
+
+
 static ngx_int_t
 ngx_http_grpc_cli_init_worker(ngx_cycle_t *cycle)
 {
@@ -139,7 +305,7 @@ ngx_http_grpc_cli_init_worker(ngx_cycle_t *cycle)
      * https://github.com/golang/go/issues/53806 */
     gccf->engine = dlopen((const char *) gccf->engine_path.data, RTLD_NOW);
     if (gccf->engine == NULL) {
-        ngx_log_error(NGX_LOG_EMERG, ngx_cycle->log, 0, "failed to init engine: %s with %s",
+        ngx_log_error(NGX_LOG_EMERG, cycle->log, 0, "failed to init engine: %s with %s",
                       dlerror(), gccf->engine_path.data);
         return NGX_ERROR;
     }
@@ -148,12 +314,14 @@ ngx_http_grpc_cli_init_worker(ngx_cycle_t *cycle)
     must_resolve_symbol(gccf->engine, grpc_engine_close);
     must_resolve_symbol(gccf->engine, grpc_engine_free);
     must_resolve_symbol(gccf->engine, grpc_engine_call);
+    must_resolve_symbol(gccf->engine, grpc_engine_wait);
 
-    return NGX_OK;
+    return ngx_http_grpc_cli_thread(cycle);
 }
 
 
-static void ngx_http_grpc_cli_exit_worker(ngx_cycle_t *cycle)
+static void
+ngx_http_grpc_cli_exit_worker(ngx_cycle_t *cycle)
 {
     ngx_http_grpc_cli_main_conf_t *gccf;
 
@@ -181,7 +349,7 @@ ngx_http_grpc_cli_connect(char *err_buf, ngx_http_request_t *r,
     void                    *engine_ctx;
     ngx_http_grpc_cli_ctx_t *ctx;
 
-    ctx = ngx_alloc(sizeof(ngx_http_grpc_cli_ctx_t), r->connection->log);
+    ctx = ngx_calloc(sizeof(ngx_http_grpc_cli_ctx_t), r->connection->log);
     if (ctx == NULL) {
         return NULL;
     }
