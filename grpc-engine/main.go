@@ -86,7 +86,7 @@ func grpc_engine_close(ref unsafe.Pointer) {
 }
 
 //export grpc_engine_call
-func grpc_engine_call(errBuf unsafe.Pointer, ref unsafe.Pointer,
+func grpc_engine_call(errBuf unsafe.Pointer, taskId C.long, ref unsafe.Pointer,
 	methodData unsafe.Pointer, methodLen C.int,
 	reqData unsafe.Pointer, reqLen C.int,
 	respLen *C.int,
@@ -103,7 +103,8 @@ func grpc_engine_call(errBuf unsafe.Pointer, ref unsafe.Pointer,
 	}
 
 	go func() {
-		task.ReportFinishedTask(12345678)
+		task.ReportFinishedTask(uint64(taskId), []byte("test"))
+		//task.ReportFinishedTask(uint64(taskId), out)
 	}()
 
 	// CBytes doesn't contain len info
@@ -118,7 +119,7 @@ func grpc_engine_free(ptr unsafe.Pointer) {
 
 //export grpc_engine_wait
 func grpc_engine_wait(taskNum *C.int) unsafe.Pointer {
-	out := task.WaitFinishedTasks()
-	*taskNum = C.int(len(out)) / 8
+	out, n := task.WaitFinishedTasks()
+	*taskNum = C.int(n)
 	return C.CBytes(out)
 }

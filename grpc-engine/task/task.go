@@ -1,5 +1,6 @@
 package task
 
+import "C"
 import (
 	"encoding/binary"
 	"sync"
@@ -26,7 +27,7 @@ type taskQueue struct {
 	cond *sync.Cond
 
 	taskIdBuf []byte
-	taskIds   []byte
+	tasks     []byte
 }
 
 func NewTaskQueue() *taskQueue {
@@ -34,33 +35,35 @@ func NewTaskQueue() *taskQueue {
 	cond := sync.NewCond(lock)
 	return &taskQueue{
 		cond:      cond,
-		taskIdBuf: make([]byte, 8),
-		taskIds:   []byte{},
+		taskIdBuf: make([]byte, 24),
+		tasks:     []byte{},
 	}
 }
 
-func (self *taskQueue) Wait() []byte {
+func (self *taskQueue) Wait() ([]byte, int) {
 	self.cond.L.Lock()
 
-	for len(self.taskIds) == 0 {
+	for len(self.tasks) == 0 {
 		self.cond.Wait()
 	}
 
-	out := self.taskIds
-	self.taskIds = []byte{}
+	out := self.tasks
+	self.tasks = []byte{}
 	self.cond.L.Unlock()
 
-	return out
+	return out, len(out) / 24
 }
 
-func (self *taskQueue) Done(id uint64) {
+func (self *taskQueue) Done(id uint64, result []byte) {
+	size := uint64(len(result))
+	ptrRes := uintptr(C.CBytes(result))
+
 	self.cond.L.Lock()
 
 	hostEndian.PutUint64(self.taskIdBuf, id)
-	self.taskIds = append(self.taskIds, self.taskIdBuf...)
-	for i := range self.taskIdBuf {
-		self.taskIdBuf[i] = 0
-	}
+	hostEndian.PutUint64(self.taskIdBuf[8:16], size)
+	hostEndian.PutUint64(self.taskIdBuf[16:], uint64(ptrRes))
+	self.tasks = append(self.tasks, self.taskIdBuf...)
 	self.cond.Signal()
 	self.cond.L.Unlock()
 }
@@ -69,11 +72,10 @@ var (
 	finishedTaskQueue = NewTaskQueue()
 )
 
-func WaitFinishedTasks() []byte {
-	taskIds := finishedTaskQueue.Wait()
-	return taskIds
+func WaitFinishedTasks() ([]byte, int) {
+	return finishedTaskQueue.Wait()
 }
 
-func ReportFinishedTask(id uint64) {
-	finishedTaskQueue.Done(id)
+func ReportFinishedTask(id uint64, result []byte) {
+	finishedTaskQueue.Done(id, result)
 }

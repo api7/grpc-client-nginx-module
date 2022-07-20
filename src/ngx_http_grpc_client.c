@@ -21,16 +21,24 @@ typedef struct {
 
 
 typedef struct {
-    ngx_queue_t                 queue;
-    uint64_t                    task_id;
+    uint64_t        task_id;
+    uint64_t        size;
+    u_char         *buf;
+} ngx_http_grpc_cli_task_res_t;
+
+
+typedef struct {
+    ngx_queue_t                   queue;
+    ngx_http_grpc_cli_task_res_t  res;
 } ngx_http_grpc_cli_posted_event_ctx_t;
 
 
 typedef struct {
     ngx_thread_task_t       *task;
     ngx_thread_pool_t       *thread_pool;
-    uint64_t                *finished_tasks;
-    int                      finished_task_num;
+
+    ngx_http_grpc_cli_task_res_t *finished_tasks;
+    int                           finished_task_num;
 
     ngx_event_t             *posted_ev;
     ngx_queue_t              occupied;
@@ -57,10 +65,11 @@ static void *ngx_http_grpc_cli_create_main_conf(ngx_conf_t *cf);
 static char *ngx_http_grpc_cli_engine_path(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
 static void *(*grpc_engine_connect) (char *, const char *, int);
-static void *(*grpc_engine_call)(char *, void *, const char *, int, const char *, int, int *);
+static void *(*grpc_engine_call)(char *, uint64_t, void *, const char *, int, const char *,
+                                 int, int *);
 static void (*grpc_engine_close) (void *);
 static void (*grpc_engine_free) (void *);
-static uint64_t *(*grpc_engine_wait) (int *);
+static void *(*grpc_engine_wait) (int *);
 
 
 static ngx_str_t thread_pool_name = ngx_string("grpc-client-nginx-module");
@@ -159,7 +168,7 @@ ngx_http_grpc_cli_thread_handler(void *data, ngx_log_t *log)
 
 static void
 ngx_http_grpc_cli_insert_posted_event_ctx(ngx_http_grpc_cli_thread_ctx_t *thctx,
-                                          ngx_log_t *log, uint64_t task_id)
+                                          ngx_log_t *log, ngx_http_grpc_cli_task_res_t res)
 {
     ngx_http_grpc_cli_posted_event_ctx_t        *ctx;
 
@@ -178,11 +187,11 @@ ngx_http_grpc_cli_insert_posted_event_ctx(ngx_http_grpc_cli_thread_ctx_t *thctx,
         }
     }
 
-    ctx->task_id = task_id;
+    ctx->res = res;
     ngx_queue_insert_tail(&thctx->occupied, &ctx->queue);
 
     ngx_log_debug2(NGX_LOG_DEBUG_HTTP, log, 0, "post finished task %uL, ctx:%p",
-                   task_id, ctx);
+                   res.task_id, ctx);
 }
 
 
@@ -200,6 +209,7 @@ ngx_http_grpc_cli_thread_event_handler(ngx_event_t *ev)
                    thctx->finished_task_num);
 
     for (i = 0; i < thctx->finished_task_num; i++) {
+        /* remember to free the res.buf if the task is cancelled */
         ngx_http_grpc_cli_insert_posted_event_ctx(thctx, ev->log, thctx->finished_tasks[i]);
         ngx_post_event(thctx->posted_ev, &ngx_posted_events);
     }
@@ -221,11 +231,11 @@ ngx_http_grpc_cli_thread_event_handler(ngx_event_t *ev)
 static void
 ngx_http_grpc_cli_thread_post_event_handler(ngx_event_t *ev)
 {
-    ngx_http_grpc_cli_thread_ctx_t   *thctx = ev->data;
-    ngx_log_t                        *log = ev->log;
-    ngx_queue_t                      *q;
-
-    ngx_http_grpc_cli_posted_event_ctx_t        *ctx;
+    ngx_http_grpc_cli_thread_ctx_t       *thctx = ev->data;
+    ngx_log_t                            *log = ev->log;
+    ngx_queue_t                          *q;
+    ngx_http_grpc_cli_ctx_t              *ctx;
+    ngx_http_grpc_cli_posted_event_ctx_t *posted_event_ctx;
 
     if (ngx_queue_empty(&thctx->occupied)) {
         return;
@@ -234,10 +244,14 @@ ngx_http_grpc_cli_thread_post_event_handler(ngx_event_t *ev)
     q = ngx_queue_head(&thctx->occupied);
     ngx_queue_remove(q);
     ngx_queue_insert_tail(&thctx->free, q);
-    ctx = ngx_queue_data(q, ngx_http_grpc_cli_posted_event_ctx_t, queue);
+    posted_event_ctx = ngx_queue_data(q, ngx_http_grpc_cli_posted_event_ctx_t, queue);
 
     ngx_log_debug2(NGX_LOG_DEBUG_HTTP, log, 0, "resume finished task %uL, ctx:%p",
-                   ctx->task_id, ctx);
+                   posted_event_ctx->res.task_id, posted_event_ctx);
+
+    ctx = (ngx_http_grpc_cli_ctx_t *) posted_event_ctx->res.task_id;
+
+    grpc_engine_free(posted_event_ctx->res.buf);
 }
 
 
@@ -408,7 +422,7 @@ ngx_http_grpc_cli_call(char *err_buf, ngx_http_grpc_cli_ctx_t *ctx,
     void                *engine_ctx;
 
     engine_ctx = ctx->engine_ctx;
-    out = grpc_engine_call(err_buf, engine_ctx,
+    out = grpc_engine_call(err_buf, (uint64_t) ctx, engine_ctx,
                            method_data, method_len,
                            req_data, req_len,
                            &resp_len);
