@@ -11,22 +11,25 @@ ffi.cdef[[
 int
 ngx_http_grpc_cli_is_engine_inited(void);
 void *
-ngx_http_grpc_cli_connect(char *err_buf, ngx_http_request_t *r,
+ngx_http_grpc_cli_connect(unsigned char *err_buf, size_t *err_len,
+                          ngx_http_request_t *r,
                           const char *target_data, int target_len);
 void
-ngx_http_grpc_cli_close(ngx_http_request_t *r, void *ctx);
+ngx_http_grpc_cli_close(void *ctx, int gc);
 int
-ngx_http_grpc_cli_call(char *err_buf, void *ctx,
+ngx_http_grpc_cli_call(unsigned char *err_buf, size_t *err_len,
+                       void *ctx,
                        const char *method_data, int method_len,
-                       const char *req_data, int req_len,
-                       ngx_str_t *resp);
+                       const char *req_data, int req_len);
 void
 ngx_http_grpc_cli_free(void *data);
 ]]
 
 if C.ngx_http_grpc_cli_is_engine_inited() == 0 then
     error("The gRPC client engine is not initialized. " ..
-          "Need to configure 'grpc_client_engine_path' in the nginx.conf.")
+          "Need to configure 'grpc_client_engine_path' in the nginx.conf. " ..
+          "And this library can not be loaded in the init phase."
+          )
 end
 
 
@@ -37,8 +40,9 @@ local mt = {__index = Conn}
 local protoc_inst
 local current_pb_state
 
-local err_buf = ffi.new("char[512]")
-local str_buf = ffi.new("ngx_str_t[1]")
+local ERR_BUF_SIZE = 512
+local err_buf = ffi.new("char[?]", ERR_BUF_SIZE)
+local err_len = ffi.new("size_t[1]")
 
 
 function _M.load(filename)
@@ -72,19 +76,20 @@ end
 
 
 local function ctx_gc_handler(ctx)
-    C.ngx_http_grpc_cli_close(nil, ctx)
+    C.ngx_http_grpc_cli_close(ctx, 1)
 end
 
 
 function _M.connect(target)
     local conn = {}
     local r = get_request()
-    conn.r = r
 
+    err_len[0] = ERR_BUF_SIZE
     -- grpc-go dials the target in non-blocking way
-    local ctx = C.ngx_http_grpc_cli_connect(err_buf, r, target, #target)
+    local ctx = C.ngx_http_grpc_cli_connect(err_buf, err_len, r, target, #target)
     if ctx == nil then
-        return nil, ffi.string(err_buf)
+        local err = ffi.string(err_buf, err_len[0])
+        return nil, err
     end
     ffi.gc(ctx, ctx_gc_handler)
     conn.ctx = ctx
@@ -94,35 +99,41 @@ end
 
 
 function Conn:close()
-    local r = self.r
-
-    local ctx = self.ctx
     if not self.ctx then
         return
     end
 
+    local ctx = self.ctx
     self.ctx = nil
     ffi.gc(ctx, nil)
-    C.ngx_http_grpc_cli_close(r, ctx)
+    C.ngx_http_grpc_cli_close(ctx, 0)
 end
 
 
 local function call_with_pb_state(ctx, m, path, req)
+    pb.state(current_pb_state)
     local ok, encoded = pcall(pb.encode, m.input_type, req)
+    pb.state(nil)
     if not ok then
         return nil, "failed to encode: " .. encoded
     end
 
-    local rc = C.ngx_http_grpc_cli_call(err_buf, ctx, path, #path, encoded, #encoded, str_buf)
+    err_len[0] = ERR_BUF_SIZE
+    local rc = C.ngx_http_grpc_cli_call(err_buf, err_len, ctx, path, #path, encoded, #encoded)
     if rc ~= NGX_OK then
-        local err = ffi.string(err_buf)
+        local err = ffi.string(err_buf, err_len[0])
         return nil, "failed to call: " .. err
     end
 
-    local str = str_buf[0]
-    local resp = ffi.string(str.data, str.len)
+    local ok, resp = coroutine._yield()
+    if not ok then
+        local err = ffi.string(err_buf, err_len[0])
+        return nil, "failed to call: " .. err
+    end
+
+    pb.state(current_pb_state)
     local ok, decoded = pcall(pb.decode, m.output_type, resp)
-    C.ngx_http_grpc_cli_free(ffi.cast("void*", str.data))
+    pb.state(nil)
     if not ok then
         return nil, "failed to decode: " .. decoded
     end
@@ -152,9 +163,7 @@ function Conn:call(service, method, req)
 
     local path = string.format("/%s/%s", service, method)
 
-    pb.state(current_pb_state)
     local res, err = call_with_pb_state(self.ctx, m, path, req)
-    pb.state(nil)
 
     if not res then
         return nil, err

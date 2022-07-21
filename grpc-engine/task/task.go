@@ -55,8 +55,13 @@ func (self *taskQueue) Wait() ([]byte, int) {
 }
 
 func (self *taskQueue) Done(id uint64, result []byte) {
-	size := uint64(len(result))
-	ptrRes := uintptr(C.CBytes(result))
+	var size uint64
+	var ptrRes uintptr
+
+	if result != nil {
+		size = uint64(len(result))
+		ptrRes = uintptr(C.CBytes(result))
+	}
 
 	self.cond.L.Lock()
 

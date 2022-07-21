@@ -40,7 +40,7 @@ type EngineCtx struct {
 
 var EngineCtxRef = map[unsafe.Pointer]*EngineCtx{}
 
-func reportErr(err error, errBuf unsafe.Pointer) {
+func reportErr(err error, errBuf unsafe.Pointer, errLen *C.size_t) {
 	s := err.Error()
 	if len(s) > ERR_BUF_SIZE-1 {
 		s = s[:ERR_BUF_SIZE-1]
@@ -48,17 +48,17 @@ func reportErr(err error, errBuf unsafe.Pointer) {
 
 	pp := (*[1 << 30]byte)(errBuf)
 	copy(pp[:], s)
-	pp[len(s)] = 0
+	*errLen = C.size_t(len(s))
 }
 
 //export grpc_engine_connect
-func grpc_engine_connect(errBuf unsafe.Pointer,
+func grpc_engine_connect(errBuf unsafe.Pointer, errLen *C.size_t,
 	targetData unsafe.Pointer, targetLen C.int) unsafe.Pointer {
 
 	target := string(C.GoBytes(targetData, targetLen))
 	c, err := conn.Connect(target)
 	if err != nil {
-		reportErr(err, errBuf)
+		reportErr(err, errBuf, errLen)
 		return nil
 	}
 
@@ -68,7 +68,7 @@ func grpc_engine_connect(errBuf unsafe.Pointer,
 	// A Go function called by C code may not return a Go pointer
 	var ref unsafe.Pointer = C.malloc(C.size_t(1))
 	if ref == nil {
-		reportErr(errors.New("no memory"), errBuf)
+		reportErr(errors.New("no memory"), errBuf, errLen)
 		return nil
 	}
 
@@ -86,30 +86,24 @@ func grpc_engine_close(ref unsafe.Pointer) {
 }
 
 //export grpc_engine_call
-func grpc_engine_call(errBuf unsafe.Pointer, taskId C.long, ref unsafe.Pointer,
+func grpc_engine_call(errBuf unsafe.Pointer, errLen *C.size_t,
+	taskId C.long, ref unsafe.Pointer,
 	methodData unsafe.Pointer, methodLen C.int,
 	reqData unsafe.Pointer, reqLen C.int,
-	respLen *C.int,
-) unsafe.Pointer {
+) {
 	method := string(C.GoBytes(methodData, methodLen))
 	req := C.GoBytes(reqData, reqLen)
 	ctx := EngineCtxRef[ref]
 	c := ctx.c
 
-	out, err := conn.Call(c, method, req)
-	if err != nil {
-		reportErr(err, errBuf)
-		return nil
-	}
-
 	go func() {
-		task.ReportFinishedTask(uint64(taskId), []byte("test"))
-		//task.ReportFinishedTask(uint64(taskId), out)
-	}()
+		out, err := conn.Call(c, method, req)
+		if err != nil {
+			reportErr(err, errBuf, errLen)
+		}
 
-	// CBytes doesn't contain len info
-	*respLen = C.int(len(out))
-	return C.CBytes(out)
+		task.ReportFinishedTask(uint64(taskId), out)
+	}()
 }
 
 //export grpc_engine_free
