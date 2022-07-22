@@ -159,3 +159,61 @@ location /t {
 }
 --- response_body
 failed to encode: bad argument #2 to '?' (string expected for field 'key', got number)
+
+
+
+=== TEST 8: wrong request proto
+--- config
+location /t {
+    content_by_lua_block {
+        local gcli = require("resty.grpc")
+        assert(gcli.load("t/testdata/bad.proto"))
+
+        local conn = assert(gcli.connect("127.0.0.1:2379"))
+        local res, err = conn:call("etcdserverpb.KV", "Put", {key = 1})
+        if not res then
+            ngx.say(err)
+        end
+    }
+}
+--- response_body eval
+qr/error unmarshalling request/
+
+
+
+=== TEST 9: wrong response proto
+--- config
+location /t {
+    content_by_lua_block {
+        local gcli = require("resty.grpc")
+        assert(gcli.load("t/testdata/bad.proto"))
+
+        local conn = assert(gcli.connect("127.0.0.1:2379"))
+        local res, err = conn:call("etcdserverpb.KV", "Range", {key = 'k'})
+        if not res then
+            ngx.say(err)
+        end
+    }
+}
+--- response_body
+failed to decode: type mismatch for field 'key' at offset 4, bytes expected for type bytes, got varint
+
+
+
+=== TEST 10: resume before content_by_lua
+--- config
+location /t {
+    access_by_lua_block {
+        local gcli = require("resty.grpc")
+        assert(gcli.load("t/testdata/rpc.proto"))
+
+        local conn = assert(gcli.connect("127.0.0.1:2379"))
+        local res = conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'v'})
+        local old = res.header.revision
+        local res = conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'c'})
+        ngx.say(res.header.revision - old)
+        conn:close()
+    }
+}
+--- response_body
+1

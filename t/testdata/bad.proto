@@ -1,0 +1,42 @@
+syntax = "proto3";
+package etcdserverpb;
+
+service KV {
+  rpc Put(WrongRequest) returns (RangeResponse) {}
+  rpc Range(RangeRequest) returns (WrongResponse) {}
+}
+
+message ResponseHeader {
+  // cluster_id is the ID of the cluster which sent the response.
+  uint64 cluster_id = 1;
+  // member_id is the ID of the member which sent the response.
+  uint64 member_id = 2;
+  // revision is the key-value store revision when the request was applied.
+  // For watch progress responses, the header.revision indicates progress. All future events
+  // recieved in this stream are guaranteed to have a higher revision number than the
+  // header.revision number.
+  int64 revision = 3;
+  // raft_term is the raft term when the request was applied.
+  uint64 raft_term = 4;
+}
+
+message RangeRequest {
+  bytes key = 1;
+}
+
+message WrongRequest {
+  int32 key = 1;
+}
+
+message KeyValue {
+  bytes key = 1;
+  bytes value = 2;
+}
+
+message RangeResponse {
+  repeated KeyValue kvs = 2;
+}
+
+message WrongResponse {
+  KeyValue kvs = 1;
+}
