@@ -8,12 +8,17 @@ local NGX_OK = ngx.OK
 
 
 ffi.cdef[[
+typedef struct {
+    bool insecure;
+} DialOpt;
+
 int
 ngx_http_grpc_cli_is_engine_inited(void);
 void *
 ngx_http_grpc_cli_connect(unsigned char *err_buf, size_t *err_len,
                           ngx_http_request_t *r,
-                          const char *target_data, int target_len);
+                          const char *target_data, int target_len,
+                          void *opt);
 void
 ngx_http_grpc_cli_close(void *ctx, int gc);
 int
@@ -80,13 +85,21 @@ local function ctx_gc_handler(ctx)
 end
 
 
-function _M.connect(target)
+function _M.connect(target, opt)
+    if not opt then
+        opt = {}
+    end
+
+    local opt_buf = ffi.new("DialOpt[1]")
+    local opt_ptr = opt_buf[0]
+    opt_ptr.insecure = opt.insecure and true or false
+
     local conn = {}
     local r = get_request()
 
     err_len[0] = ERR_BUF_SIZE
     -- grpc-go dials the target in non-blocking way
-    local ctx = C.ngx_http_grpc_cli_connect(err_buf, err_len, r, target, #target)
+    local ctx = C.ngx_http_grpc_cli_connect(err_buf, err_len, r, target, #target, opt_buf)
     if ctx == nil then
         local err = ffi.string(err_buf, err_len[0])
         return nil, err

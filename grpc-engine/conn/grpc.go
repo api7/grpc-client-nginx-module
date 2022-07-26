@@ -3,18 +3,32 @@ package conn
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-func Connect(target string) (*grpc.ClientConn, error) {
-	conn, err := grpc.Dial(target,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+type ConnectOption struct {
+	Insecure bool
+}
+
+func Connect(target string, opt *ConnectOption) (*grpc.ClientConn, error) {
+	opts := []grpc.DialOption{
 		// connect timeout
-		grpc.WithTimeout(60*time.Second),
-	)
+		grpc.WithTimeout(60 * time.Second),
+	}
+
+	if opt.Insecure {
+		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	} else {
+		tc := &tls.Config{}
+		opts = append(opts, grpc.WithTransportCredentials(credentials.NewTLS(tc)))
+	}
+
+	conn, err := grpc.Dial(target, opts...)
 	if err != nil {
 		return nil, err
 	}

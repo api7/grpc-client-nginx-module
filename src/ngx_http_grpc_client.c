@@ -65,7 +65,8 @@ static void ngx_http_grpc_cli_exit_worker(ngx_cycle_t *cycle);
 static void *ngx_http_grpc_cli_create_main_conf(ngx_conf_t *cf);
 static char *ngx_http_grpc_cli_engine_path(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
-static void *(*grpc_engine_connect) (unsigned char *, size_t *, const char *, int);
+static void *(*grpc_engine_connect) (unsigned char *, size_t *, const char *, int,
+                                     void *);
 static void (*grpc_engine_call)(unsigned char *, size_t *,
                                 uint64_t, void *, const char *, int, const char *, int);
 static void (*grpc_engine_close) (void *);
@@ -449,7 +450,8 @@ ngx_http_grpc_cli_is_engine_inited(void)
 
 void *
 ngx_http_grpc_cli_connect(unsigned char *err_buf, size_t *err_len, ngx_http_request_t *r,
-                          const char *target_data, int target_len)
+                          const char *target_data, int target_len,
+                          void *dial_opt)
 {
     void                    *engine_ctx;
     ngx_http_grpc_cli_ctx_t *ctx;
@@ -462,7 +464,7 @@ ngx_http_grpc_cli_connect(unsigned char *err_buf, size_t *err_len, ngx_http_requ
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "create gRPC connection");
 
-    engine_ctx = grpc_engine_connect(err_buf, err_len, target_data, target_len);
+    engine_ctx = grpc_engine_connect(err_buf, err_len, target_data, target_len, dial_opt);
     if (engine_ctx == NULL) {
         goto free_ctx;
     }

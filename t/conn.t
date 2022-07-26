@@ -24,7 +24,7 @@ false
 location /t {
     content_by_lua_block {
         local gcli = require("resty.grpc")
-        local conn = assert(gcli.connect("127.0.0.1:2379"))
+        local conn = assert(gcli.connect("127.0.0.1:2379", {insecure = true}))
         ngx.say("ok")
     }
 }
@@ -38,7 +38,7 @@ ok
 location /t {
     content_by_lua_block {
         local gcli = require("resty.grpc")
-        local conn = assert(gcli.connect("127.0.0.1:2379"))
+        local conn = assert(gcli.connect("127.0.0.1:2379", {insecure = true}))
         conn:close()
         conn:close()
         ngx.say("ok")
@@ -56,7 +56,7 @@ location /t {
         local gcli = require("resty.grpc")
         assert(gcli.load("t/testdata/rpc.proto"))
 
-        local conn = assert(gcli.connect("127.0.0.1:2379"))
+        local conn = assert(gcli.connect("127.0.0.1:2379", {insecure = true}))
         conn:close()
         local res, err = conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'v'})
         ngx.say(err)

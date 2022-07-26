@@ -2,7 +2,12 @@ package main
 
 /*
 #cgo LDFLAGS: -shared -ldl -lpthread
+#include <stdbool.h>
 #include <stdlib.h>
+
+typedef struct DialOpt {
+    bool insecure;
+} DialOpt;
 */
 import "C"
 import (
@@ -53,10 +58,14 @@ func reportErr(err error, errBuf unsafe.Pointer, errLen *C.size_t) {
 
 //export grpc_engine_connect
 func grpc_engine_connect(errBuf unsafe.Pointer, errLen *C.size_t,
-	targetData unsafe.Pointer, targetLen C.int) unsafe.Pointer {
+	targetData unsafe.Pointer, targetLen C.int, opt *C.struct_DialOpt) unsafe.Pointer {
 
 	target := string(C.GoBytes(targetData, targetLen))
-	c, err := conn.Connect(target)
+
+	co := &conn.ConnectOption{
+		Insecure: bool(opt.insecure),
+	}
+	c, err := conn.Connect(target, co)
 	if err != nil {
 		reportErr(err, errBuf, errLen)
 		return nil
