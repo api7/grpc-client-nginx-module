@@ -92,7 +92,11 @@ function _M.connect(target, opt)
 
     local opt_buf = ffi.new("DialOpt[1]")
     local opt_ptr = opt_buf[0]
-    opt_ptr.insecure = opt.insecure and true or false
+    if opt.insecure == false then
+        opt_ptr.insecure = false
+    else
+        opt_ptr.insecure = true
+    end
 
     local conn = {}
     local r = get_request()

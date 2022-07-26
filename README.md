@@ -1,5 +1,7 @@
 # gRPC-client-nginx-module
 
+This module is still WIP.
+
 ## Install
 
 First of all, build this module into your OpenResty:
@@ -58,20 +60,20 @@ Create a gRPC connection
 connectOpt:
 
 * `insecure`: whether connecting the target in an insecure(plaintext) way.
-False by default.
+True by default.
 
 ### call
 
 **syntax:** *res, err = conn:call(service, method, request)*
 
-Send an unary request.
-The `request` is a Lua table which will be encoded according to the proto.
-The `res` is a Lua table which is decoded from the proto message.
+Send a unary request.
+The `request` is a Lua table that will be encoded according to the proto.
+The `res` is a Lua table that is decoded from the proto message.
 
 ## Why don't we compile the gRPC library into the Nginx module
 
-The offical gRPC library is written in C++ and requires >2GB dependencies.
-We don't use bazel/cmake to build Nginx and download >2GB dependencies will
+The official gRPC library is written in C++ and requires >2GB dependencies.
+We don't use bazel/cmake to build Nginx and downloading >2GB dependencies will
 slow down our build process.
 
 Therefore we choose gRPC-go as the core of gRPC engine. If the performance is
@@ -79,16 +81,16 @@ an issue, we may consider using Rust instead.
 
 ## Debug
 
-Because cgo doesn't work after `fork`, we have to load the Go library at runtime
-in each worker.
+Because go's scheduler doesn't work after `fork`, we have to load the Go library
+at runtime in each worker.
 
-In consequence of that we can't use dlv to debug the process. Therefore we need
-to use `log debug`. All log printed by std log library will be written to file
+As a consequence of that, we can't use dlv to debug the process. Therefore we need
+to use `log debug`. All logs printed by the std log library will be written to file
 `/tmp/grpc-engine-debug.log`.
 
 ## TODO
 
 * resolve `import` in the loaded `.proto` file
 (we can handle it like what we have done in Apache APISIX)
-* very big integer in int64 can't be display correctly due to the missing int64
+* very big integer in int64 can't be displayed correctly due to the missing int64
 support in LuaJIT.

@@ -12,7 +12,7 @@ location /t {
         local gcli = require("resty.grpc")
         assert(gcli.load("t/testdata/rpc.proto"))
 
-        local conn = assert(gcli.connect("127.0.0.1:2379", {insecure = true}))
+        local conn = assert(gcli.connect("127.0.0.1:2379"))
         local res = conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'v'})
         local old = res.header.revision
         local res = conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'c'})
@@ -37,7 +37,7 @@ location /t {
         local gcli = require("resty.grpc")
         assert(gcli.load("t/testdata/rpc.proto"))
 
-        local conn = assert(gcli.connect("127.0.0.1:2379", {insecure = true}))
+        local conn = assert(gcli.connect("127.0.0.1:2379"))
         for i = 1, 3 do
             assert(conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'v'}))
             local res, err = conn:call("etcdserverpb.KV", "Range", {key = 'k', range_end = 'ka', revision = 0})
@@ -76,7 +76,7 @@ location /t {
     header_filter_by_lua_block {
         local gcli = require("resty.grpc")
         assert(gcli.load("t/testdata/rpc.proto"))
-        local conn = assert(gcli.connect("127.0.0.1:2379", {insecure = true}))
+        local conn = assert(gcli.connect("127.0.0.1:2379"))
         local ok, err = conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'v'})
         ngx.log(ngx.ERR, "failed to call: ", err)
     }
@@ -93,7 +93,7 @@ location /t {
         local gcli = require("resty.grpc")
         assert(gcli.load("t/testdata/rpc.proto"))
 
-        local conn = assert(gcli.connect("127.0.0.1:1979", {insecure = true}))
+        local conn = assert(gcli.connect("127.0.0.1:1979"))
         local res, err = conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'v'})
         if not res then
             ngx.say(err)
@@ -112,7 +112,7 @@ location /t {
         local gcli = require("resty.grpc")
         assert(gcli.load("t/testdata/rpc.proto"))
 
-        local conn = assert(gcli.connect("127.0.0.1:2379", {insecure = true}))
+        local conn = assert(gcli.connect("127.0.0.1:2379"))
         local res, err = conn:call("etcdserverpb.KVs", "Put", {key = 'k', value = 'v'})
         if not res then
             ngx.say(err)
@@ -131,7 +131,7 @@ location /t {
         local gcli = require("resty.grpc")
         assert(gcli.load("t/testdata/rpc.proto"))
 
-        local conn = assert(gcli.connect("127.0.0.1:2379", {insecure = true}))
+        local conn = assert(gcli.connect("127.0.0.1:2379"))
         local res, err = conn:call("etcdserverpb.KV", "Puts", {key = 'k', value = 'v'})
         if not res then
             ngx.say(err)
@@ -150,7 +150,7 @@ location /t {
         local gcli = require("resty.grpc")
         assert(gcli.load("t/testdata/rpc.proto"))
 
-        local conn = assert(gcli.connect("127.0.0.1:2379", {insecure = true}))
+        local conn = assert(gcli.connect("127.0.0.1:2379"))
         local res, err = conn:call("etcdserverpb.KV", "Put", {key = 1, value = 'v'})
         if not res then
             ngx.say(err)
@@ -169,7 +169,7 @@ location /t {
         local gcli = require("resty.grpc")
         assert(gcli.load("t/testdata/bad.proto"))
 
-        local conn = assert(gcli.connect("127.0.0.1:2379", {insecure = true}))
+        local conn = assert(gcli.connect("127.0.0.1:2379"))
         local res, err = conn:call("etcdserverpb.KV", "Put", {key = 1})
         if not res then
             ngx.say(err)
@@ -188,7 +188,7 @@ location /t {
         local gcli = require("resty.grpc")
         assert(gcli.load("t/testdata/bad.proto"))
 
-        local conn = assert(gcli.connect("127.0.0.1:2379", {insecure = true}))
+        local conn = assert(gcli.connect("127.0.0.1:2379"))
         local res, err = conn:call("etcdserverpb.KV", "Range", {key = 'k'})
         if not res then
             ngx.say(err)
@@ -207,7 +207,7 @@ location /t {
         local gcli = require("resty.grpc")
         assert(gcli.load("t/testdata/rpc.proto"))
 
-        local conn = assert(gcli.connect("127.0.0.1:2379", {insecure = true}))
+        local conn = assert(gcli.connect("127.0.0.1:2379"))
         local res = conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'v'})
         local old = res.header.revision
         local res = conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'c'})
@@ -236,7 +236,7 @@ qr/authentication handshake failed/
 
 
 
-=== TEST 12: default not insecure
+=== TEST 12: default insecure
 --- config
 location /t {
     content_by_lua_block {
@@ -247,5 +247,5 @@ location /t {
         ngx.say(err)
     }
 }
---- response_body eval
-qr/authentication handshake failed/
+--- response_body
+nil
