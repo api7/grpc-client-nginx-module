@@ -60,7 +60,8 @@ Create a gRPC connection
 connectOpt:
 
 * `insecure`: whether connecting the target in an insecure(plaintext) way.
-True by default.
+True by default. Set it to false will use TLS connection.
+* `tls_verify`: whether to verify the server's TLS certificate
 
 ### call
 

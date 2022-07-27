@@ -10,6 +10,7 @@ local NGX_OK = ngx.OK
 ffi.cdef[[
 typedef struct {
     bool insecure;
+    bool tls_verify;
 } DialOpt;
 
 int
@@ -92,10 +93,17 @@ function _M.connect(target, opt)
 
     local opt_buf = ffi.new("DialOpt[1]")
     local opt_ptr = opt_buf[0]
+
     if opt.insecure == false then
         opt_ptr.insecure = false
     else
         opt_ptr.insecure = true
+    end
+
+    if opt.tls_verify == false then
+        opt_ptr.tls_verify = false
+    else
+        opt_ptr.tls_verify = true
     end
 
     local conn = {}

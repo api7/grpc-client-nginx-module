@@ -12,7 +12,8 @@ import (
 )
 
 type ConnectOption struct {
-	Insecure bool
+	Insecure  bool
+	TLSVerify bool
 }
 
 func Connect(target string, opt *ConnectOption) (*grpc.ClientConn, error) {
@@ -25,6 +26,11 @@ func Connect(target string, opt *ConnectOption) (*grpc.ClientConn, error) {
 		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	} else {
 		tc := &tls.Config{}
+
+		if !opt.TLSVerify {
+			tc.InsecureSkipVerify = true
+		}
+
 		opts = append(opts, grpc.WithTransportCredentials(credentials.NewTLS(tc)))
 	}
 

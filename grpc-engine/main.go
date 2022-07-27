@@ -7,6 +7,7 @@ package main
 
 typedef struct DialOpt {
     bool insecure;
+    bool tls_verify;
 } DialOpt;
 */
 import "C"
@@ -63,7 +64,8 @@ func grpc_engine_connect(errBuf unsafe.Pointer, errLen *C.size_t,
 	target := string(C.GoBytes(targetData, targetLen))
 
 	co := &conn.ConnectOption{
-		Insecure: bool(opt.insecure),
+		Insecure:  bool(opt.insecure),
+		TLSVerify: bool(opt.tls_verify),
 	}
 	c, err := conn.Connect(target, co)
 	if err != nil {
