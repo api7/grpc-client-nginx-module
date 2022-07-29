@@ -16,6 +16,10 @@ type ConnectOption struct {
 	TLSVerify bool
 }
 
+type CallOption struct {
+	Timeout time.Duration
+}
+
 func Connect(target string, opt *ConnectOption) (*grpc.ClientConn, error) {
 	opts := []grpc.DialOption{
 		// connect timeout
@@ -47,9 +51,16 @@ func Close(c *grpc.ClientConn) {
 	c.Close()
 }
 
-func Call(c *grpc.ClientConn, method string, req []byte) ([]byte, error) {
+func Call(c *grpc.ClientConn, method string, req []byte, opt *CallOption) ([]byte, error) {
+	ctx := context.Background()
+	var cancel context.CancelFunc
+	if opt.Timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, opt.Timeout)
+		defer cancel()
+	}
+
 	out := &bytes.Buffer{}
-	err := c.Invoke(context.Background(), method, req, out)
+	err := c.Invoke(ctx, method, req, out)
 	if err != nil {
 		return nil, err
 	}

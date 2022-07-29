@@ -3,18 +3,25 @@ package main
 /*
 #cgo LDFLAGS: -shared -ldl -lpthread
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdlib.h>
 
 typedef struct DialOpt {
     bool insecure;
     bool tls_verify;
 } DialOpt;
+
+typedef uintptr_t ngx_msec_t;
+typedef struct CallOpt {
+    ngx_msec_t timeout;
+} CallOpt;
 */
 import "C"
 import (
 	"errors"
 	"log"
 	"os"
+	"time"
 	"unsafe"
 
 	"google.golang.org/grpc"
@@ -101,14 +108,18 @@ func grpc_engine_call(errBuf unsafe.Pointer, errLen *C.size_t,
 	taskId C.long, ref unsafe.Pointer,
 	methodData unsafe.Pointer, methodLen C.int,
 	reqData unsafe.Pointer, reqLen C.int,
+	opt *C.struct_CallOpt,
 ) {
 	method := string(C.GoBytes(methodData, methodLen))
 	req := C.GoBytes(reqData, reqLen)
 	ctx := EngineCtxRef[ref]
 	c := ctx.c
+	co := &conn.CallOption{
+		Timeout: time.Duration(opt.timeout) * time.Millisecond,
+	}
 
 	go func() {
-		out, err := conn.Call(c, method, req)
+		out, err := conn.Call(c, method, req, co)
 		if err != nil {
 			reportErr(err, errBuf, errLen)
 		}

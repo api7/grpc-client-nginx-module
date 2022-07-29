@@ -13,6 +13,11 @@ typedef struct {
     bool tls_verify;
 } DialOpt;
 
+typedef uintptr_t ngx_msec_t;
+typedef struct {
+    ngx_msec_t timeout;
+} CallOpt;
+
 int
 ngx_http_grpc_cli_is_engine_inited(void);
 void *
@@ -26,7 +31,8 @@ int
 ngx_http_grpc_cli_call(unsigned char *err_buf, size_t *err_len,
                        void *ctx,
                        const char *method_data, int method_len,
-                       const char *req_data, int req_len);
+                       const char *req_data, int req_len,
+                       void *opt);
 void
 ngx_http_grpc_cli_free(void *data);
 ]]
@@ -135,7 +141,7 @@ function Conn:close()
 end
 
 
-local function call_with_pb_state(ctx, m, path, req)
+local function call_with_pb_state(ctx, m, path, req, opt)
     pb.state(current_pb_state)
     local ok, encoded = pcall(pb.encode, m.input_type, req)
     pb.state(nil)
@@ -144,7 +150,7 @@ local function call_with_pb_state(ctx, m, path, req)
     end
 
     err_len[0] = ERR_BUF_SIZE
-    local rc = C.ngx_http_grpc_cli_call(err_buf, err_len, ctx, path, #path, encoded, #encoded)
+    local rc = C.ngx_http_grpc_cli_call(err_buf, err_len, ctx, path, #path, encoded, #encoded, opt)
     if rc ~= NGX_OK then
         local err = ffi.string(err_buf, err_len[0])
         return nil, "failed to call: " .. err
@@ -152,7 +158,7 @@ local function call_with_pb_state(ctx, m, path, req)
 
     local ok, resp = coroutine._yield()
     if not ok then
-        local err = ffi.string(err_buf, err_len[0])
+        local err = resp
         return nil, "failed to call: " .. err
     end
 
@@ -167,7 +173,7 @@ local function call_with_pb_state(ctx, m, path, req)
 end
 
 
-function Conn:call(service, method, req)
+function Conn:call(service, method, req, opt)
     if protoc_inst == nil then
         return nil, "proto files not loaded"
     end
@@ -186,9 +192,22 @@ function Conn:call(service, method, req)
         return nil, string.format("method %s not found", method)
     end
 
+    if not opt then
+        opt = {}
+    end
+
+    local opt_buf = ffi.new("CallOpt[1]")
+    local opt_ptr = opt_buf[0]
+
+    if opt.timeout and opt.timeout > 0 then
+        opt_ptr.timeout = opt.timeout
+    else
+        opt_ptr.timeout = 60 * 1000
+    end
+
     local path = string.format("/%s/%s", service, method)
 
-    local res, err = call_with_pb_state(self.ctx, m, path, req)
+    local res, err = call_with_pb_state(self.ctx, m, path, req, opt_buf)
 
     if not res then
         return nil, err

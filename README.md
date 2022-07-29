@@ -65,11 +65,16 @@ True by default. Set it to false will use TLS connection.
 
 ### call
 
-**syntax:** *res, err = conn:call(service, method, request)*
+**syntax:** *res, err = conn:call(service, method, request, callOpt)*
 
 Send a unary request.
 The `request` is a Lua table that will be encoded according to the proto.
 The `res` is a Lua table that is decoded from the proto message.
+
+callOpt:
+
+* `timeout`: Set the timeout value in milliseconds for the whole call.
+60000 milliseconds by default.
 
 ## Why don't we compile the gRPC library into the Nginx module
 

@@ -17,7 +17,7 @@ add_block_preprocessor(sub {
     my ($block) = @_;
 
     if (!$block->no_error_log && !$block->error_log) {
-        $block->set_value("no_error_log", "[error]\n[alert]");
+        $block->set_value("no_error_log", "[error]\n[alert]\nERROR: AddressSanitizer");
     }
 
     if (defined $block->config) {

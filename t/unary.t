@@ -249,3 +249,96 @@ location /t {
 }
 --- response_body
 nil
+
+
+
+=== TEST 13: with timeout
+--- log_level: debug
+--- config
+location /t {
+    content_by_lua_block {
+        local gcli = require("resty.grpc")
+        assert(gcli.load("t/testdata/rpc.proto"))
+
+        local opt = {timeout = 1.1 * 1000}
+        local conn = assert(gcli.connect("127.0.0.1:2379"))
+        local res = conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'v'}, opt)
+        local old = res.header.revision
+        local res = conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'c'}, opt)
+        ngx.say(res.header.revision - old)
+        conn:close()
+    }
+}
+--- response_body
+1
+--- grep_error_log eval
+qr/yield gRPC ctx:\w+, timeout:\d+/
+--- grep_error_log_out eval
+qr/yield gRPC ctx:\w+, timeout:1100
+yield gRPC ctx:\w+, timeout:1100/
+
+
+
+=== TEST 14: timed out
+--- http_config
+server {
+    listen 2376 http2;
+
+    location / {
+        access_by_lua_block {
+            ngx.sleep(4)
+        }
+        grpc_set_header   Content-Type application/grpc;
+        grpc_socket_keepalive on;
+        grpc_pass         grpc://127.0.0.1:2379;
+    }
+}
+--- config
+location /t {
+    content_by_lua_block {
+        local gcli = require("resty.grpc")
+        assert(gcli.load("t/testdata/rpc.proto"))
+
+        local opt = {timeout = 0.1 * 1000}
+        local conn = assert(gcli.connect("127.0.0.1:2376"))
+        local res, err = conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'v'}, opt)
+        ngx.say(err)
+        conn:close()
+    }
+}
+--- response_body
+failed to call: timeout
+
+
+
+=== TEST 15: call with delay
+--- http_config
+server {
+    listen 2376 http2;
+
+    location / {
+        access_by_lua_block {
+            ngx.sleep(1)
+        }
+        grpc_set_header   Content-Type application/grpc;
+        grpc_socket_keepalive on;
+        grpc_pass         grpc://127.0.0.1:2379;
+    }
+}
+--- config
+location /t {
+    content_by_lua_block {
+        local gcli = require("resty.grpc")
+        assert(gcli.load("t/testdata/rpc.proto"))
+
+        local opt = {timeout = 1.1 * 1000}
+        local conn = assert(gcli.connect("127.0.0.1:2376"))
+        local res = conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'v'}, opt)
+        local old = res.header.revision
+        local res = conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'c'})
+        ngx.say(res.header.revision - old)
+        conn:close()
+    }
+}
+--- response_body
+1
