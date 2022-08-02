@@ -261,6 +261,9 @@ ngx_http_grpc_cli_thread_event_handler(ngx_event_t *ev)
 
         /* remember to free the res.buf if the task is cancelled */
         if (ngx_http_grpc_cli_lookup_task(res->task_id) == NULL) {
+            ngx_log_debug1(NGX_LOG_DEBUG_HTTP, ev->log, 0, "finished task %uL is cancelled",
+                           res->task_id);
+
             grpc_engine_free(res->buf);
             continue;
         }
@@ -271,6 +274,10 @@ ngx_http_grpc_cli_thread_event_handler(ngx_event_t *ev)
 
     grpc_engine_free(thctx->finished_tasks);
     thctx->finished_tasks = NULL;
+
+    if (ngx_quit || ngx_exiting) {
+        return;
+    }
 
     thread_pool = thctx->thread_pool;
     task = thctx->task;
@@ -622,18 +629,20 @@ ngx_http_grpc_cli_close(ngx_http_grpc_cli_ctx_t *ctx, int gc)
         log = r->connection->log;
     }
 
-    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, log, 0, "close gRPC connection");
+    ngx_log_debug2(NGX_LOG_DEBUG_HTTP, log, 0, "close gRPC connection, gc:%d, ctx:%p", gc, ctx);
 
     if (ngx_http_grpc_cli_lookup_task((ngx_rbtree_key_t) ctx) != NULL) {
-        return;
+        if (!gc) {
+            /* there are ongoing tasks when we closes the conn in a different coroutine */
+            return;
+        }
+
+        /* defensive free */
+        ngx_http_grpc_cli_delete_rb_node(ctx);
     }
 
     engine_ctx = ctx->engine_ctx;
     grpc_engine_close(engine_ctx);
-
-    if (!gc) {
-        return;
-    }
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, log, 0, "free gRPC ctx: %p", engine_ctx);
 

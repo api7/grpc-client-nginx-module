@@ -403,3 +403,33 @@ location /t {
 }
 --- response_body
 ok
+
+
+
+=== TEST 18: abort
+--- http_config
+server {
+    listen 2376 http2;
+
+    location / {
+        access_by_lua_block {
+            ngx.sleep(100)
+        }
+        grpc_pass         grpc://127.0.0.1:2379;
+    }
+}
+--- config
+location /t {
+    content_by_lua_block {
+        local gcli = require("resty.grpc")
+        assert(gcli.load("t/testdata/rpc.proto"))
+
+        local conn = assert(gcli.connect("127.0.0.1:2376"))
+        local res, err = conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'v'}, opt)
+        ngx.log(ngx.ERR, "unreacheable")
+    }
+}
+--- timeout: 0.2
+--- abort
+--- wait: 0.7
+--- ignore_response
