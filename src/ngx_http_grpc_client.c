@@ -352,15 +352,26 @@ ngx_http_grpc_cli_resume(ngx_http_request_t *r)
 
 
 static void
+ngx_http_grpc_cli_delete_rb_node(ngx_http_grpc_cli_ctx_t *ctx)
+{
+    if (ctx->node == NULL) {
+        return;
+    }
+
+    ngx_rbtree_delete(&ngx_http_grpc_cli_ongoing_tasks, ctx->node);
+    ngx_free(ctx->node);
+    ctx->node = NULL;
+}
+
+
+static void
 ngx_http_grpc_cli_to_resume(ngx_http_grpc_cli_ctx_t *ctx)
 {
     ngx_http_request_t                   *r;
     ngx_connection_t                     *c;
     ngx_http_lua_ctx_t                   *lctx;
 
-    ngx_rbtree_delete(&ngx_http_grpc_cli_ongoing_tasks, ctx->node);
-    ngx_free(ctx->node);
-    ctx->node = NULL;
+    ngx_http_grpc_cli_delete_rb_node(ctx);
 
     r = ctx->r;
     c = r->connection;
@@ -437,6 +448,24 @@ ngx_http_grpc_cli_timeout_handler(ngx_event_t *ev)
                    ctx, ev);
 
     ngx_http_grpc_cli_to_resume(ctx);
+}
+
+
+static void
+ngx_http_grpc_cli_cleanup(void *data)
+{
+    ngx_http_lua_co_ctx_t       *wait_co_ctx = data;
+    ngx_http_grpc_cli_ctx_t     *ctx;
+
+    ctx = wait_co_ctx->data;
+
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, ngx_cycle->log, 0, "cleanup aborted task %uL", ctx);
+
+    if (ctx->wait_co_ctx->sleep.timer_set) {
+        ngx_del_timer(&ctx->wait_co_ctx->sleep);
+    }
+
+    ngx_http_grpc_cli_delete_rb_node(ctx);
 }
 
 
@@ -595,12 +624,20 @@ ngx_http_grpc_cli_close(ngx_http_grpc_cli_ctx_t *ctx, int gc)
 
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, log, 0, "close gRPC connection");
 
+    if (ngx_http_grpc_cli_lookup_task((ngx_rbtree_key_t) ctx) != NULL) {
+        return;
+    }
+
     engine_ctx = ctx->engine_ctx;
-    ngx_free(ctx);
+    grpc_engine_close(engine_ctx);
+
+    if (!gc) {
+        return;
+    }
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, log, 0, "free gRPC ctx: %p", engine_ctx);
 
-    grpc_engine_close(engine_ctx);
+    ngx_free(ctx);
 }
 
 
@@ -653,6 +690,8 @@ ngx_http_grpc_cli_call(unsigned char *err_buf, size_t *err_len,
     wait_co_ctx->sleep.log = r->connection->log;
     ngx_add_timer(&wait_co_ctx->sleep, call_opt->timeout);
 
+    wait_co_ctx->cleanup = ngx_http_grpc_cli_cleanup;
+
     engine_ctx = ctx->engine_ctx;
     grpc_engine_call(err_buf, err_len, (uint64_t) ctx, engine_ctx,
                      method_data, method_len,
@@ -662,7 +701,6 @@ ngx_http_grpc_cli_call(unsigned char *err_buf, size_t *err_len,
                    ctx, call_opt->timeout);
 
     return NGX_OK;
-    // FIXME: resume the coroutine when the request is aborted
 }
 
 

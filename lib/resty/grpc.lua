@@ -124,6 +124,7 @@ function _M.connect(target, opt)
     end
     ffi.gc(ctx, ctx_gc_handler)
     conn.ctx = ctx
+    conn.r = r
 
     return setmetatable(conn, mt)
 end
@@ -134,9 +135,13 @@ function Conn:close()
         return
     end
 
+    local r = get_request()
+    if self.r ~= r then
+        return nil, "bad request"
+    end
+
     local ctx = self.ctx
     self.ctx = nil
-    ffi.gc(ctx, nil)
     C.ngx_http_grpc_cli_close(ctx, 0)
 end
 
@@ -180,6 +185,11 @@ function Conn:call(service, method, req, opt)
 
     if self.ctx == nil then
         return nil, "closed"
+    end
+
+    local r = get_request()
+    if self.r ~= r then
+        return nil, "bad request"
     end
 
     local serv = protoc_inst.index[service]
