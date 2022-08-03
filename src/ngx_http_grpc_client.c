@@ -12,6 +12,8 @@
 typedef struct {
     ngx_str_t            engine_path;
     void                *engine;
+    ngx_thread_pool_t   *thread_pool;
+    ngx_thread_task_t   *task;
 } ngx_http_grpc_cli_main_conf_t;
 
 
@@ -93,6 +95,7 @@ static void *(*grpc_engine_wait) (int *);
 
 static ngx_rbtree_t       ngx_http_grpc_cli_ongoing_tasks;
 static ngx_rbtree_node_t  ngx_http_grpc_cli_ongoing_task_sentinel;
+static int                ngx_http_grpc_cli_ongoing_tasks_num;
 
 static ngx_str_t thread_pool_name = ngx_string("grpc-client-nginx-module");
 
@@ -243,10 +246,50 @@ ngx_http_grpc_cli_lookup_task(ngx_rbtree_key_t key)
 }
 
 
+static int
+ngx_http_grpc_cli_task_num(void)
+{
+    return ngx_http_grpc_cli_ongoing_tasks_num;
+}
+
+
+static ngx_int_t
+ngx_http_grpc_cli_keep_task(ngx_http_grpc_cli_ctx_t *ctx, ngx_log_t *log)
+{
+    ngx_rbtree_node_t     *node;
+
+    node = ngx_alloc(sizeof(ngx_rbtree_node_t), log);
+    if (node == NULL) {
+        return NGX_ERROR;
+    }
+
+    node->key = (ngx_rbtree_key_t) ctx;
+    ngx_http_grpc_cli_ongoing_tasks_num++;
+    ngx_rbtree_insert(&ngx_http_grpc_cli_ongoing_tasks, node);
+    ctx->node = node;
+
+    return NGX_OK;
+}
+
+
+static void
+ngx_http_grpc_cli_unkeep_task(ngx_http_grpc_cli_ctx_t *ctx)
+{
+    if (ctx->node == NULL) {
+        return;
+    }
+
+    ngx_http_grpc_cli_ongoing_tasks_num--;
+    ngx_rbtree_delete(&ngx_http_grpc_cli_ongoing_tasks, ctx->node);
+    ngx_free(ctx->node);
+    ctx->node = NULL;
+}
+
+
 static void
 ngx_http_grpc_cli_thread_event_handler(ngx_event_t *ev)
 {
-    int                               i;
+    int                               i, n;
     ngx_http_grpc_cli_thread_ctx_t   *thctx;
     ngx_thread_pool_t                 *thread_pool;
     ngx_thread_task_t                 *task;
@@ -255,6 +298,8 @@ ngx_http_grpc_cli_thread_event_handler(ngx_event_t *ev)
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, ev->log, 0, "post %d finished task",
                    thctx->finished_task_num);
+
+    n = 0;
 
     for (i = 0; i < thctx->finished_task_num; i++) {
         ngx_http_grpc_cli_task_res_t *res = &thctx->finished_tasks[i];
@@ -268,22 +313,32 @@ ngx_http_grpc_cli_thread_event_handler(ngx_event_t *ev)
             continue;
         }
 
+        n++;
         ngx_http_grpc_cli_insert_posted_event_ctx(thctx, ev->log, res);
-        ngx_post_event(thctx->posted_ev, &ngx_posted_events);
     }
 
     grpc_engine_free(thctx->finished_tasks);
     thctx->finished_tasks = NULL;
 
+    ngx_post_event(thctx->posted_ev, &ngx_posted_events);
+
     if (ngx_quit || ngx_exiting) {
         return;
     }
+
+    if (ngx_http_grpc_cli_task_num() <= n) {
+        return;
+    }
+
+    /* still have tasks to wait */
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, ev->log, 0, "post grpc client thread to wait %d tasks",
+                   ngx_http_grpc_cli_task_num() - n);
 
     thread_pool = thctx->thread_pool;
     task = thctx->task;
 
     if (ngx_thread_task_post(thread_pool, task) != NGX_OK) {
-        ngx_log_error(NGX_LOG_EMERG, ngx_cycle->log, 0,
+        ngx_log_error(NGX_LOG_EMERG, ev->log, 0,
                       "failed to wait gRPC engine: task post failed");
         return;
     }
@@ -359,26 +414,13 @@ ngx_http_grpc_cli_resume(ngx_http_request_t *r)
 
 
 static void
-ngx_http_grpc_cli_delete_rb_node(ngx_http_grpc_cli_ctx_t *ctx)
-{
-    if (ctx->node == NULL) {
-        return;
-    }
-
-    ngx_rbtree_delete(&ngx_http_grpc_cli_ongoing_tasks, ctx->node);
-    ngx_free(ctx->node);
-    ctx->node = NULL;
-}
-
-
-static void
 ngx_http_grpc_cli_to_resume(ngx_http_grpc_cli_ctx_t *ctx)
 {
     ngx_http_request_t                   *r;
     ngx_connection_t                     *c;
     ngx_http_lua_ctx_t                   *lctx;
 
-    ngx_http_grpc_cli_delete_rb_node(ctx);
+    ngx_http_grpc_cli_unkeep_task(ctx);
 
     r = ctx->r;
     c = r->connection;
@@ -412,30 +454,28 @@ ngx_http_grpc_cli_thread_post_event_handler(ngx_event_t *ev)
     ngx_http_grpc_cli_posted_event_ctx_t *posted_event_ctx;
     ngx_http_grpc_cli_task_res_t         *res;
 
-    if (ngx_queue_empty(&thctx->occupied)) {
-        return;
+    while (!ngx_queue_empty(&thctx->occupied)) {
+        q = ngx_queue_head(&thctx->occupied);
+        ngx_queue_remove(q);
+        ngx_queue_insert_tail(&thctx->free, q);
+        posted_event_ctx = ngx_queue_data(q, ngx_http_grpc_cli_posted_event_ctx_t, queue);
+
+        res = &posted_event_ctx->res;
+
+        ngx_log_debug2(NGX_LOG_DEBUG_HTTP, log, 0, "resume finished task %uL, ctx:%p",
+                    res->task_id, posted_event_ctx);
+
+        ctx = (ngx_http_grpc_cli_ctx_t *) res->task_id;
+        ctx->res = *res;
+
+        if (ctx->wait_co_ctx->sleep.timer_set) {
+            ngx_del_timer(&ctx->wait_co_ctx->sleep);
+        }
+
+        ctx->wait_co_ctx->cleanup = NULL;
+
+        ngx_http_grpc_cli_to_resume(ctx);
     }
-
-    q = ngx_queue_head(&thctx->occupied);
-    ngx_queue_remove(q);
-    ngx_queue_insert_tail(&thctx->free, q);
-    posted_event_ctx = ngx_queue_data(q, ngx_http_grpc_cli_posted_event_ctx_t, queue);
-
-    res = &posted_event_ctx->res;
-
-    ngx_log_debug2(NGX_LOG_DEBUG_HTTP, log, 0, "resume finished task %uL, ctx:%p",
-                   res->task_id, posted_event_ctx);
-
-    ctx = (ngx_http_grpc_cli_ctx_t *) res->task_id;
-    ctx->res = *res;
-
-    if (ctx->wait_co_ctx->sleep.timer_set) {
-        ngx_del_timer(&ctx->wait_co_ctx->sleep);
-    }
-
-    ctx->wait_co_ctx->cleanup = NULL;
-
-    ngx_http_grpc_cli_to_resume(ctx);
 }
 
 
@@ -472,12 +512,12 @@ ngx_http_grpc_cli_cleanup(void *data)
         ngx_del_timer(&ctx->wait_co_ctx->sleep);
     }
 
-    ngx_http_grpc_cli_delete_rb_node(ctx);
+    ngx_http_grpc_cli_unkeep_task(ctx);
 }
 
 
 static ngx_int_t
-ngx_http_grpc_cli_thread(ngx_cycle_t *cycle)
+ngx_http_grpc_cli_thread(ngx_http_grpc_cli_main_conf_t *gccf, ngx_cycle_t *cycle)
 {
     ngx_thread_pool_t                  *thread_pool;
     ngx_thread_task_t                  *task;
@@ -513,11 +553,8 @@ ngx_http_grpc_cli_thread(ngx_cycle_t *cycle)
     task->event.data = thctx;
     task->event.log = cycle->log;
 
-    if (ngx_thread_task_post(thread_pool, task) != NGX_OK) {
-        ngx_log_error(NGX_LOG_EMERG, cycle->log, 0,
-                      "failed to init engine: task post failed");
-        return NGX_ERROR;
-    }
+    gccf->thread_pool = thread_pool;
+    gccf->task = task;
 
     return NGX_OK;
 }
@@ -551,10 +588,11 @@ ngx_http_grpc_cli_init_worker(ngx_cycle_t *cycle)
     must_resolve_symbol(gccf->engine, grpc_engine_call);
     must_resolve_symbol(gccf->engine, grpc_engine_wait);
 
+    ngx_http_grpc_cli_ongoing_tasks_num = 0;
     ngx_rbtree_init(&ngx_http_grpc_cli_ongoing_tasks,
                     &ngx_http_grpc_cli_ongoing_task_sentinel, ngx_rbtree_insert_value);
 
-    return ngx_http_grpc_cli_thread(cycle);
+    return ngx_http_grpc_cli_thread(gccf, cycle);
 }
 
 
@@ -629,22 +667,26 @@ ngx_http_grpc_cli_close(ngx_http_grpc_cli_ctx_t *ctx, int gc)
         log = r->connection->log;
     }
 
-    ngx_log_debug2(NGX_LOG_DEBUG_HTTP, log, 0, "close gRPC connection, gc:%d, ctx:%p", gc, ctx);
+    ngx_log_debug3(NGX_LOG_DEBUG_HTTP, log, 0,
+                   "close gRPC connection, gc:%d, ctx:%p, engine_ctx:%p",
+                   gc, ctx, ctx->engine_ctx);
 
-    if (ngx_http_grpc_cli_lookup_task((ngx_rbtree_key_t) ctx) != NULL) {
-        if (!gc) {
-            /* there are ongoing tasks when we closes the conn in a different coroutine */
-            return;
-        }
-
-        /* defensive free */
-        ngx_http_grpc_cli_delete_rb_node(ctx);
+    if (ctx->engine_ctx != NULL) {
+        engine_ctx = ctx->engine_ctx;
+        grpc_engine_close(engine_ctx);
+        ctx->engine_ctx = NULL;
     }
 
-    engine_ctx = ctx->engine_ctx;
-    grpc_engine_close(engine_ctx);
+    if (!gc) {
+        return;
+    }
 
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, log, 0, "free gRPC ctx: %p", engine_ctx);
+    if (ngx_http_grpc_cli_lookup_task((ngx_rbtree_key_t) ctx) != NULL) {
+        /* defensive free */
+        ngx_http_grpc_cli_unkeep_task(ctx);
+    }
+
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, log, 0, "free gRPC ctx: %p", ctx);
 
     ngx_free(ctx);
 }
@@ -657,12 +699,14 @@ ngx_http_grpc_cli_call(unsigned char *err_buf, size_t *err_len,
                        const char *req_data, int req_len,
                        ngx_http_grpc_cli_call_opt_t *call_opt)
 {
-    ngx_int_t              rc;
-    void                  *engine_ctx;
-    ngx_http_lua_ctx_t    *lctx;
-    ngx_http_request_t    *r;
-    ngx_http_lua_co_ctx_t *wait_co_ctx;
-    ngx_rbtree_node_t     *node;
+    ngx_int_t                      rc;
+    void                          *engine_ctx;
+    ngx_http_lua_ctx_t            *lctx;
+    ngx_http_request_t            *r;
+    ngx_http_lua_co_ctx_t         *wait_co_ctx;
+    ngx_http_grpc_cli_main_conf_t *gccf;
+
+    gccf = ngx_http_cycle_get_module_main_conf(ngx_cycle, ngx_http_grpc_client_module);
 
     r = ctx->r;
     lctx = ngx_http_get_module_ctx(r, ngx_http_lua_module);
@@ -683,15 +727,21 @@ ngx_http_grpc_cli_call(unsigned char *err_buf, size_t *err_len,
     ctx->err_len = err_len;
     ctx->state = NGX_HTTP_GRPC_CLIENT_STATE_OK;
 
-    node = ngx_alloc(sizeof(ngx_rbtree_node_t), r->connection->log);
-    if (node == NULL) {
+
+    if (!gccf->task->event.active) {
+        ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "post grpc client thread");
+
+        /* kick off background thread for the first task */
+        if (ngx_thread_task_post(gccf->thread_pool, gccf->task) != NGX_OK) {
+            *err_len = ngx_snprintf(err_buf, *err_len, "task post failed") - err_buf;
+            return NGX_ERROR;
+        }
+    }
+
+    if (ngx_http_grpc_cli_keep_task(ctx, r->connection->log) != NGX_OK) {
         *err_len = ngx_snprintf(err_buf, *err_len, "no memory") - err_buf;
         return NGX_ERROR;
     }
-
-    node->key = (ngx_rbtree_key_t) ctx;
-    ngx_rbtree_insert(&ngx_http_grpc_cli_ongoing_tasks, node);
-    ctx->node = node;
 
     wait_co_ctx->data = ctx;
     wait_co_ctx->sleep.handler = ngx_http_grpc_cli_timeout_handler;

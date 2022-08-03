@@ -74,7 +74,9 @@ The `res` is a Lua table that is decoded from the proto message.
 callOpt:
 
 * `timeout`: Set the timeout value in milliseconds for the whole call.
-60000 milliseconds by default.
+60000 milliseconds by default. Nginx exits only after all running tasks
+in the background thread are done, so a long timeout may block Nginx from
+exiting.
 
 ## Why don't we compile the gRPC library into the Nginx module
 

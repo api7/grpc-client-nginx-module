@@ -393,7 +393,7 @@ location /t {
 
         local conn = assert(gcli.connect("127.0.0.1:2376"))
         local function co()
-            local opt = {timeout = 0.1}
+            local opt = {timeout = 100}
             conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'v'}, opt)
         end
         local th = ngx.thread.spawn(co)
@@ -425,6 +425,7 @@ location /t {
         assert(gcli.load("t/testdata/rpc.proto"))
 
         local conn = assert(gcli.connect("127.0.0.1:2376"))
+        local opt = {timeout = 1000}
         local res, err = conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'v'}, opt)
         ngx.log(ngx.ERR, "unreacheable")
     }
