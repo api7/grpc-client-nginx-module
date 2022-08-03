@@ -37,6 +37,8 @@ typedef struct {
     int                           state;
 
     ngx_rbtree_node_t            *node;
+
+    unsigned                      waiting:1;
 } ngx_http_grpc_cli_ctx_t;
 
 
@@ -362,6 +364,7 @@ ngx_http_grpc_cli_resume(ngx_http_request_t *r)
     }
 
     ctx = lctx->cur_co_ctx->data;
+    ctx->waiting = 0;
     lctx->cur_co_ctx->data = ctx->prev_data;
     res = &ctx->res;
 
@@ -448,7 +451,6 @@ static void
 ngx_http_grpc_cli_thread_post_event_handler(ngx_event_t *ev)
 {
     ngx_http_grpc_cli_thread_ctx_t       *thctx = ev->data;
-    ngx_log_t                            *log = ev->log;
     ngx_queue_t                          *q;
     ngx_http_grpc_cli_ctx_t              *ctx;
     ngx_http_grpc_cli_posted_event_ctx_t *posted_event_ctx;
@@ -708,6 +710,11 @@ ngx_http_grpc_cli_call(unsigned char *err_buf, size_t *err_len,
 
     gccf = ngx_http_cycle_get_module_main_conf(ngx_cycle, ngx_http_grpc_client_module);
 
+    if (ctx->waiting) {
+        *err_len = ngx_snprintf(err_buf, *err_len, "busy waiting") - err_buf;
+        return NGX_ERROR;
+    }
+
     r = ctx->r;
     lctx = ngx_http_get_module_ctx(r, ngx_http_lua_module);
     if (lctx == NULL) {
@@ -726,6 +733,7 @@ ngx_http_grpc_cli_call(unsigned char *err_buf, size_t *err_len,
     ctx->err_buf = err_buf;
     ctx->err_len = err_len;
     ctx->state = NGX_HTTP_GRPC_CLIENT_STATE_OK;
+    ctx->waiting = 1;
 
 
     if (!gccf->task->event.active) {
