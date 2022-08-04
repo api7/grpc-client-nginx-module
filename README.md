@@ -18,7 +18,11 @@ Then, compile the gRPC engine:
 cd ./grpc-engine &&  go build -o libgrpc_engine.so -buildmode=c-shared main.go
 ```
 
-After that, setup the thread pool and load the shared library:
+After that, install the Lua rock:
+
+TODO
+
+Finally, setup the thread pool and load the shared library:
 
 ```nginx
 # Only one background thread is used to communicate with the gRPC engine

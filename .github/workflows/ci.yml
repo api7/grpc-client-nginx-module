@@ -14,10 +14,13 @@ jobs:
 
     steps:
       - name: Check out code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Set up Clang
         uses: egor-tensin/setup-clang@v1
+
+      - name: Set up Go
+        uses: actions/setup-go@v3
 
       - name: Get dependencies
         run: sudo apt install -y cpanminus build-essential libncurses5-dev libreadline-dev libssl-dev perl luarocks
@@ -26,6 +29,7 @@ jobs:
         run: |
           sudo cpanm --notest Test::Nginx > build.log 2>&1 || (cat build.log && exit 1)
           git clone https://github.com/openresty/test-nginx.git test-nginx
+          docker-compose --project-directory . -f t/docker-compose.yml up -d
 
       - name: Install
         run: |
@@ -33,7 +37,8 @@ jobs:
           chmod +x build-apisix-base.sh
           OR_PREFIX=$OPENRESTY_PREFIX CC="clang -fsanitize=address -fcolor-diagnostics -Qunused-arguments" \
             ./build-apisix-base.sh latest
-          luarocks install ./grpc-client-nginx-module-dev-0-0.rockspec
+          sudo luarocks make ./grpc-client-nginx-module-dev-0-0.rockspec
+          cd ./grpc-engine && go build -o libgrpc_engine.so -buildmode=c-shared main.go
 
       - name: Script
         run: |
