@@ -464,8 +464,8 @@ ngx_http_grpc_cli_thread_post_event_handler(ngx_event_t *ev)
 
         res = &posted_event_ctx->res;
 
-        ngx_log_debug2(NGX_LOG_DEBUG_HTTP, log, 0, "resume finished task %uL, ctx:%p",
-                    res->task_id, posted_event_ctx);
+        ngx_log_debug2(NGX_LOG_DEBUG_HTTP, ev->log, 0, "resume finished task %uL, ctx:%p",
+                       res->task_id, posted_event_ctx);
 
         ctx = (ngx_http_grpc_cli_ctx_t *) res->task_id;
         ctx->res = *res;
