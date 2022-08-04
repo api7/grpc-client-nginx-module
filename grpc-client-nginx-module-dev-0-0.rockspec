@@ -18,8 +18,8 @@ dependencies = {
 
 
 build = {
-   type = "builtin",
-   modules = {
-    ["resty.grpc"] = "lib/resty/grpc.lua",
-   }
+    type = "builtin",
+    modules = {
+        ["resty.grpc"] = "lib/resty/grpc.lua",
+    }
 }
