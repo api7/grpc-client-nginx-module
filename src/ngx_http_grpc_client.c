@@ -569,6 +569,11 @@ ngx_http_grpc_cli_init_worker(ngx_cycle_t *cycle)
     ngx_http_grpc_cli_main_conf_t *gccf;
 
     gccf = ngx_http_cycle_get_module_main_conf(cycle, ngx_http_grpc_client_module);
+    if (gccf == NULL) {
+        /* only stream subsys is available */
+        return NGX_OK;
+    }
+
     if (gccf->engine_path.data == NULL) {
         return NGX_OK;
     }
@@ -604,6 +609,11 @@ ngx_http_grpc_cli_exit_worker(ngx_cycle_t *cycle)
     ngx_http_grpc_cli_main_conf_t *gccf;
 
     gccf = ngx_http_cycle_get_module_main_conf(cycle, ngx_http_grpc_client_module);
+    if (gccf == NULL) {
+        /* only stream subsys is available */
+        return;
+    }
+
     if (gccf->engine != NULL) {
         dlclose(gccf->engine);
     }
