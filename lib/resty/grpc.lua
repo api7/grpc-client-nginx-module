@@ -26,10 +26,10 @@ ngx_http_grpc_cli_connect(unsigned char *err_buf, size_t *err_len,
                           const char *target_data, int target_len,
                           void *opt);
 void
-ngx_http_grpc_cli_close(void *ctx, int gc);
+ngx_http_grpc_cli_close(void *ctx, ngx_http_request_t *r);
 int
 ngx_http_grpc_cli_call(unsigned char *err_buf, size_t *err_len,
-                       void *ctx,
+                       ngx_http_request_t *r, void *ctx,
                        const char *method_data, int method_len,
                        const char *req_data, int req_len,
                        void *opt);
@@ -88,7 +88,7 @@ end
 
 
 local function ctx_gc_handler(ctx)
-    C.ngx_http_grpc_cli_close(ctx, 1)
+    C.ngx_http_grpc_cli_close(ctx, nil)
 end
 
 
@@ -124,7 +124,6 @@ function _M.connect(target, opt)
     end
     ffi.gc(ctx, ctx_gc_handler)
     conn.ctx = ctx
-    conn.r = r
 
     return setmetatable(conn, mt)
 end
@@ -136,17 +135,13 @@ function Conn:close()
     end
 
     local r = get_request()
-    if self.r ~= r then
-        return nil, "bad request"
-    end
-
     local ctx = self.ctx
     self.ctx = nil
-    C.ngx_http_grpc_cli_close(ctx, 0)
+    C.ngx_http_grpc_cli_close(ctx, r)
 end
 
 
-local function call_with_pb_state(ctx, m, path, req, opt)
+local function call_with_pb_state(r, ctx, m, path, req, opt)
     pb.state(current_pb_state)
     local ok, encoded = pcall(pb.encode, m.input_type, req)
     pb.state(nil)
@@ -155,7 +150,7 @@ local function call_with_pb_state(ctx, m, path, req, opt)
     end
 
     err_len[0] = ERR_BUF_SIZE
-    local rc = C.ngx_http_grpc_cli_call(err_buf, err_len, ctx, path, #path, encoded, #encoded, opt)
+    local rc = C.ngx_http_grpc_cli_call(err_buf, err_len, r, ctx, path, #path, encoded, #encoded, opt)
     if rc ~= NGX_OK then
         local err = ffi.string(err_buf, err_len[0])
         return nil, "failed to call: " .. err
@@ -188,9 +183,6 @@ function Conn:call(service, method, req, opt)
     end
 
     local r = get_request()
-    if self.r ~= r then
-        return nil, "bad request"
-    end
 
     local serv = protoc_inst.index[service]
     if not serv then
@@ -217,7 +209,7 @@ function Conn:call(service, method, req, opt)
 
     local path = string.format("/%s/%s", service, method)
 
-    local res, err = call_with_pb_state(self.ctx, m, path, req, opt_buf)
+    local res, err = call_with_pb_state(r, self.ctx, m, path, req, opt_buf)
 
     if not res then
         return nil, err
