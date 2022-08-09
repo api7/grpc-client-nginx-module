@@ -434,3 +434,75 @@ location /t {
 --- abort
 --- wait: 0.7
 --- ignore_response
+
+
+
+=== TEST 19: mix req
+--- http_config
+init_worker_by_lua_block {
+    local gcli = require("resty.grpc")
+    assert(gcli.load("t/testdata/rpc.proto"))
+
+    package.loaded.conn = assert(gcli.connect("127.0.0.1:2379"))
+}
+--- config
+location /t {
+    content_by_lua_block {
+        local conn = package.loaded.conn
+        local res, err = conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'v'})
+        local old = res.header.revision
+        local res = conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'c'})
+        ngx.say(res.header.revision - old)
+        conn:close()
+    }
+}
+--- response_body
+1
+
+
+
+=== TEST 20: many threads wait for one conn
+--- http_config
+server {
+    listen 2376 http2;
+
+    location / {
+        access_by_lua_block {
+            ngx.sleep(0.1)
+        }
+        grpc_pass         grpc://127.0.0.1:2379;
+    }
+}
+--- config
+location /t {
+    content_by_lua_block {
+        local gcli = require("resty.grpc")
+        assert(gcli.load("t/testdata/rpc.proto"))
+
+        local conn = assert(gcli.connect("127.0.0.1:2376"))
+        assert(conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'v'}))
+        local function co()
+            local res, err = conn:call("etcdserverpb.KV", "Range", {key = 'k'})
+            if not res then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+            local kv = res.kvs[1]
+            if kv == nil then
+                return
+            end
+            if kv.key ~= "k" or kv.value ~= "v" then
+                ngx.log(ngx.ERR, "k: ", kv.key, ", v: ", kv.value)
+            end
+        end
+        local ths = {}
+        for i = 1, 10 do
+            local th = ngx.thread.spawn(co)
+            table.insert(ths, th)
+        end
+        local ok = ngx.thread.wait(unpack(ths))
+        ngx.say(ok)
+    }
+}
+--- response_body
+true
