@@ -8,6 +8,9 @@
 #define NGX_HTTP_GRPC_CLIENT_STATE_OK         0
 #define NGX_HTTP_GRPC_CLIENT_STATE_TIMEOUT    1
 
+#define NGX_HTTP_GRPC_CLIENT_RES_TYPE_OK  0
+#define NGX_HTTP_GRPC_CLIENT_RES_TYPE_ERR 1
+
 
 typedef struct {
     ngx_str_t            engine_path;
@@ -20,6 +23,10 @@ typedef struct {
 typedef struct {
     uint64_t        task_id;
     uint64_t        size;
+    /*
+     * We require this Nginx module runs on 64bit aligned machine, like x64 and arm64.
+     * So that we can store the result types in the unused 7 bitfields
+     * */
     u_char         *buf;
 } ngx_http_grpc_cli_task_res_t;
 
@@ -319,6 +326,7 @@ ngx_http_grpc_cli_thread_event_handler(ngx_event_t *ev)
             ngx_log_debug1(NGX_LOG_DEBUG_HTTP, ev->log, 0, "finished task %uL is cancelled",
                            res->task_id);
 
+            res->buf = (u_char *) ((int64_t) (res->buf) >> 3 << 3);
             grpc_engine_free(res->buf);
             continue;
         }
@@ -387,16 +395,21 @@ ngx_http_grpc_cli_resume(ngx_http_request_t *r)
         lua_pushboolean(lctx->cur_co_ctx->co, 0);
         lua_pushliteral(lctx->cur_co_ctx->co, "timeout");
 
-    } else if (res->buf != NULL) {
-        lua_pushboolean(lctx->cur_co_ctx->co, 1);
-        lua_pushlstring(lctx->cur_co_ctx->co, (const char *) res->buf, res->size);
-
-        grpc_engine_free(res->buf);
-
     } else {
-        /* err from the engine */
-        lua_pushboolean(lctx->cur_co_ctx->co, 0);
-        lua_pushlstring(lctx->cur_co_ctx->co, (const char *) sctx->err_buf, *sctx->err_len);
+        int type;
+
+        ngx_http_lua_assert(res->buf != NULL);
+        type = (int64_t) (res->buf) & 7;
+        res->buf = (u_char *) ((int64_t) (res->buf) >> 3 << 3);
+
+        if (type == NGX_HTTP_GRPC_CLIENT_RES_TYPE_OK) {
+            lua_pushboolean(lctx->cur_co_ctx->co, 1);
+        } else {
+            lua_pushboolean(lctx->cur_co_ctx->co, 0);
+        }
+
+        lua_pushlstring(lctx->cur_co_ctx->co, (const char *) res->buf, res->size);
+        grpc_engine_free(res->buf);
     }
 
     ctx = sctx->parent;

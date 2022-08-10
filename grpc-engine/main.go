@@ -120,11 +120,7 @@ func grpc_engine_call(errBuf unsafe.Pointer, errLen *C.size_t,
 
 	go func() {
 		out, err := conn.Call(c, method, req, co)
-		if err != nil {
-			reportErr(err, errBuf, errLen)
-		}
-
-		task.ReportFinishedTask(uint64(taskId), out)
+		task.ReportFinishedTask(uint64(taskId), out, err)
 	}()
 }
 

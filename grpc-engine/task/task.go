@@ -54,11 +54,15 @@ func (self *taskQueue) Wait() ([]byte, int) {
 	return out, len(out) / 24
 }
 
-func (self *taskQueue) Done(id uint64, result []byte) {
+func (self *taskQueue) Done(id uint64, result []byte, err error) {
 	var size uint64
 	var ptrRes uintptr
 
-	if result != nil {
+	if err != nil {
+		errStr := err.Error()
+		size = uint64(len(errStr))
+		ptrRes = uintptr(C.CBytes([]byte(errStr))) | 1
+	} else {
 		size = uint64(len(result))
 		ptrRes = uintptr(C.CBytes(result))
 	}
@@ -81,6 +85,6 @@ func WaitFinishedTasks() ([]byte, int) {
 	return finishedTaskQueue.Wait()
 }
 
-func ReportFinishedTask(id uint64, result []byte) {
-	finishedTaskQueue.Done(id, result)
+func ReportFinishedTask(id uint64, result []byte, err error) {
+	finishedTaskQueue.Done(id, result, err)
 }

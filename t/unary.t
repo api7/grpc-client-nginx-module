@@ -506,3 +506,45 @@ location /t {
 }
 --- response_body
 true
+
+
+
+=== TEST 21: mix error in different req
+--- config
+location /t {
+    content_by_lua_block {
+        local gcli = require("resty.grpc")
+        assert(gcli.load("t/testdata/bad.proto"))
+        local conn1 = assert(gcli.connect("127.0.0.1:2379"))
+        local conn2 = assert(gcli.connect("127.0.0.1:2379", {insecure = false}))
+
+        local function co1()
+            local res, err = conn1:call("etcdserverpb.KV", "Put", {key = 1})
+            if not res then
+                ngx.log(ngx.WARN, err)
+            end
+        end
+        local function co2()
+            local res, err = conn2:call("etcdserverpb.KV", "Put", {key = 1})
+            if not res then
+                ngx.log(ngx.WARN, err)
+            end
+        end
+        local ths = {}
+        for i = 1, 10 do
+            local th
+            if i % 2 == 1 then
+                th = ngx.thread.spawn(co1)
+            else
+                th = ngx.thread.spawn(co2)
+            end
+            table.insert(ths, th)
+        end
+        local ok = ngx.thread.wait(unpack(ths))
+        ngx.say(ok)
+    }
+}
+--- grep_error_log eval
+qr/error: desc = "transport: authentication handshake failed: EOF",|error unmarshalling request: proto: wrong wireType = 0 for field Key,/
+--- grep_error_log_out eval
+qr/(error: desc = "transport: authentication handshake failed: EOF",|error unmarshalling request: proto: wrong wireType = 0 for field Key,)\n{1,5}/
