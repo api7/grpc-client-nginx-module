@@ -306,7 +306,7 @@ ngx_http_grpc_cli_unkeep_task(ngx_http_grpc_cli_stream_ctx_t *ctx)
 static void
 ngx_http_grpc_cli_thread_event_handler(ngx_event_t *ev)
 {
-    int                               i, n;
+    int                               i;
     ngx_http_grpc_cli_thread_ctx_t   *thctx;
     ngx_thread_pool_t                 *thread_pool;
     ngx_thread_task_t                 *task;
@@ -316,22 +316,9 @@ ngx_http_grpc_cli_thread_event_handler(ngx_event_t *ev)
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, ev->log, 0, "post %d finished task",
                    thctx->finished_task_num);
 
-    n = 0;
-
     for (i = 0; i < thctx->finished_task_num; i++) {
         ngx_http_grpc_cli_task_res_t *res = &thctx->finished_tasks[i];
 
-        /* remember to free the res.buf if the task is cancelled */
-        if (ngx_http_grpc_cli_lookup_task(res->task_id) == NULL) {
-            ngx_log_debug1(NGX_LOG_DEBUG_HTTP, ev->log, 0, "finished task %uL is cancelled",
-                           res->task_id);
-
-            res->buf = (u_char *) ((int64_t) (res->buf) >> 3 << 3);
-            grpc_engine_free(res->buf);
-            continue;
-        }
-
-        n++;
         ngx_http_grpc_cli_insert_posted_event_ctx(thctx, ev->log, res);
     }
 
@@ -344,13 +331,13 @@ ngx_http_grpc_cli_thread_event_handler(ngx_event_t *ev)
         return;
     }
 
-    if (ngx_http_grpc_cli_task_num() <= n) {
+    if (ngx_http_grpc_cli_task_num() <= thctx->finished_task_num) {
         return;
     }
 
     /* still have tasks to wait */
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, ev->log, 0, "post grpc client thread to wait %d tasks",
-                   ngx_http_grpc_cli_task_num() - n);
+                   ngx_http_grpc_cli_task_num() - thctx->finished_task_num);
 
     thread_pool = thctx->thread_pool;
     task = thctx->task;
@@ -487,6 +474,17 @@ ngx_http_grpc_cli_thread_post_event_handler(ngx_event_t *ev)
         posted_event_ctx = ngx_queue_data(q, ngx_http_grpc_cli_posted_event_ctx_t, queue);
 
         res = &posted_event_ctx->res;
+
+        /* remember to free the res.buf if the task is cancelled */
+        if (ngx_http_grpc_cli_lookup_task(res->task_id) == NULL) {
+            ngx_log_debug1(NGX_LOG_DEBUG_HTTP, ev->log, 0,
+                           "finished task %uL is cancelled",
+                           res->task_id);
+
+            res->buf = (u_char *) ((int64_t) (res->buf) >> 3 << 3);
+            grpc_engine_free(res->buf);
+            continue;
+        }
 
         ngx_log_debug2(NGX_LOG_DEBUG_HTTP, ev->log, 0, "resume finished task %uL, ctx:%p",
                        res->task_id, posted_event_ctx);

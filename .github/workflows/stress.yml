@@ -1,0 +1,47 @@
+name: stress
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+
+jobs:
+  stress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      OPENRESTY_PREFIX: "/usr/local/openresty"
+
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v3
+      with:
+        submodules: recursive
+
+    - name: Before install
+      run: |
+        sudo apt install -y perl build-essential libssl-dev luarocks
+        docker-compose --project-directory . -f t/docker-compose.yml up -d
+
+    - name: Install
+      run: |
+        wget https://raw.githubusercontent.com/api7/apisix-build-tools/master/build-apisix-base.sh
+        chmod +x build-apisix-base.sh
+        OR_PREFIX=$OPENRESTY_PREFIX CC="clang -fsanitize=address -fcolor-diagnostics -Qunused-arguments" \
+          ./build-apisix-base.sh latest
+
+        wget https://raw.githubusercontent.com/apache/apisix/master/utils/linux-install-etcd-client.sh
+        chmod +x linux-install-etcd-client.sh
+        ./linux-install-etcd-client.sh
+
+        sudo luarocks make ./grpc-client-nginx-module-dev-0-0.rockspec
+        cd ./grpc-engine && go build -o libgrpc_engine.so -buildmode=c-shared main.go
+
+    - name: run tests
+      run: |
+        python -m unittest t/stress/test.py
