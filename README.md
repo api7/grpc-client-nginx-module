@@ -82,7 +82,14 @@ callOpt:
 in the background thread are done, so a long timeout may block Nginx from
 exiting.
 
-## Why don't we compile the gRPC library into the Nginx module
+## Why don't we
+
+### Why don't we use the gRPC code in Nginx
+
+Because Nginx doesn't provide an interface for the gRPC feature. It requires
+we to copy & paste and assemble the components.
+
+### Why don't we compile the gRPC library into the Nginx module
 
 The official gRPC library is written in C++ and requires >2GB dependencies.
 We don't use bazel/cmake to build Nginx and downloading >2GB dependencies will
@@ -100,8 +107,9 @@ As a consequence of that, we can't use dlv to debug the process. Therefore we ne
 to use `log debug`. All logs printed by the std log library will be written to file
 `/tmp/grpc-engine-debug.log`.
 
-## TODO
+## Limitation
 
+* We require this Nginx module runs on 64bit aligned machine, like x64 and arm64.
 * resolve `import` in the loaded `.proto` file
 (we can handle it like what we have done in Apache APISIX)
 * very big integer in int64 can't be displayed correctly due to the missing int64
