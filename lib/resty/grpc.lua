@@ -156,14 +156,13 @@ local function call_with_pb_state(r, ctx, m, path, req, opt)
         return nil, "failed to call: " .. err
     end
 
-    local ok, resp = coroutine._yield()
+    local ok, resp_or_err = coroutine._yield()
     if not ok then
-        local err = resp
-        return nil, "failed to call: " .. err
+        return nil, "failed to call: " .. resp_or_err
     end
 
     pb.state(current_pb_state)
-    local ok, decoded = pcall(pb.decode, m.output_type, resp)
+    local ok, decoded = pcall(pb.decode, m.output_type, resp_or_err)
     pb.state(nil)
     if not ok then
         return nil, "failed to decode: " .. decoded
