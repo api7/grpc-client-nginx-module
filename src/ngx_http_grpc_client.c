@@ -824,10 +824,3 @@ ngx_http_grpc_cli_call(unsigned char *err_buf, size_t *err_len,
 
     return NGX_OK;
 }
-
-
-void
-ngx_http_grpc_cli_free(void *data)
-{
-    grpc_engine_free(data);
-}

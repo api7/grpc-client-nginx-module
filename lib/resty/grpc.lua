@@ -33,8 +33,6 @@ ngx_http_grpc_cli_call(unsigned char *err_buf, size_t *err_len,
                        const char *method_data, int method_len,
                        const char *req_data, int req_len,
                        void *opt);
-void
-ngx_http_grpc_cli_free(void *data);
 ]]
 
 if C.ngx_http_grpc_cli_is_engine_inited() == 0 then
