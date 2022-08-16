@@ -4,11 +4,18 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"fmt"
 	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+)
+
+const (
+	ClientStream int = iota
+	ServerStream
+	BidirectionalStream
 )
 
 type ConnectOption struct {
@@ -65,4 +72,43 @@ func Call(c *grpc.ClientConn, method string, req []byte, opt *CallOption) ([]byt
 		return nil, err
 	}
 	return out.Bytes(), nil
+}
+
+func NewStream(c *grpc.ClientConn, method string, req []byte, opt *CallOption, streamType int) (grpc.Stream, error) {
+	ctx := context.Background()
+	var cancel context.CancelFunc
+	if opt.Timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, opt.Timeout)
+		defer cancel()
+	}
+
+	desc := &grpc.StreamDesc{}
+	switch streamType {
+	case ClientStream:
+		desc.ClientStreams = true
+	case ServerStream:
+		desc.ServerStreams = true
+	case BidirectionalStream:
+		desc.ClientStreams = true
+		desc.ServerStreams = true
+	default:
+		panic(fmt.Sprintf("Unknown stream type: %d", streamType))
+	}
+
+	cs, err := c.NewStream(ctx, desc, method)
+	if err != nil {
+		return nil, err
+	}
+	if err := cs.SendMsg(req); err != nil {
+		return nil, err
+	}
+
+	if streamType == ServerStream {
+		// TODO: non-ServerStream don't work like this
+		if err := cs.CloseSend(); err != nil {
+			return nil, err
+		}
+	}
+
+	return cs, nil
 }

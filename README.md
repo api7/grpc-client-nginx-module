@@ -82,6 +82,19 @@ callOpt:
 in the background thread are done, so a long timeout may block Nginx from
 exiting.
 
+### new_server_stream
+
+**syntax:** *stream, err = conn:new_server_stream(service, method, request, callOpt)*
+
+Create a server stream.
+The `request` is a Lua table that will be encoded according to the proto.
+The `stream` is the server stream which can be used to read the data.
+
+callOpt:
+
+* `timeout`: Set the timeout value in milliseconds for the whole lifetime of
+the stream. 3600 seconds by default.
+
 ## Why don't we
 
 ### Why don't we use the gRPC code in Nginx

@@ -52,6 +52,7 @@ type EngineCtx struct {
 }
 
 var EngineCtxRef = map[unsafe.Pointer]*EngineCtx{}
+var StreamRef = map[unsafe.Pointer]grpc.Stream{}
 
 func reportErr(err error, errBuf unsafe.Pointer, errLen *C.size_t) {
 	s := err.Error()
@@ -122,6 +123,38 @@ func grpc_engine_call(errBuf unsafe.Pointer, errLen *C.size_t,
 		out, err := conn.Call(c, method, req, co)
 		task.ReportFinishedTask(uint64(taskId), out, err)
 	}()
+}
+
+//export grpc_engine_new_stream
+func grpc_engine_new_stream(errBuf unsafe.Pointer, errLen *C.size_t,
+	sctx unsafe.Pointer, ref unsafe.Pointer,
+	methodData unsafe.Pointer, methodLen C.int,
+	reqData unsafe.Pointer, reqLen C.int,
+	opt *C.struct_CallOpt, streamType C.int,
+) {
+	method := string(C.GoBytes(methodData, methodLen))
+	req := C.GoBytes(reqData, reqLen)
+	ctx := EngineCtxRef[ref]
+	c := ctx.c
+	co := &conn.CallOption{
+		Timeout: time.Duration(opt.timeout) * time.Millisecond,
+	}
+
+	go func() {
+		cs, err := conn.NewStream(c, method, req, co, int(streamType))
+		if err != nil {
+			task.ReportFinishedTask(uint64(uintptr(sctx)), nil, err)
+			return
+		}
+
+		StreamRef[sctx] = cs
+		task.ReportFinishedTask(uint64(uintptr(sctx)), nil, nil)
+	}()
+}
+
+//export grpc_engine_close_stream
+func grpc_engine_close_stream(sctx unsafe.Pointer) {
+	delete(StreamRef, sctx)
 }
 
 //export grpc_engine_free

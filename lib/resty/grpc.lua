@@ -27,6 +27,14 @@ ngx_http_grpc_cli_connect(unsigned char *err_buf, size_t *err_len,
                           void *opt);
 void
 ngx_http_grpc_cli_close(void *ctx, ngx_http_request_t *r);
+void *
+ngx_http_grpc_cli_new_stream(unsigned char *err_buf, size_t *err_len,
+                              ngx_http_request_t *r, void *ctx,
+                              const char *method_data, int method_len,
+                              const char *req_data, int req_len,
+                              void *opt, int type);
+void
+ngx_http_grpc_cli_close_stream(void *ctx, ngx_http_request_t *r);
 int
 ngx_http_grpc_cli_call(unsigned char *err_buf, size_t *err_len,
                        ngx_http_request_t *r, void *ctx,
@@ -45,7 +53,9 @@ end
 
 local _M = {}
 local Conn = {}
-local mt = {__index = Conn}
+Conn.__index = Conn
+local Stream = {}
+Stream.__index = Stream
 
 local protoc_inst
 local current_pb_state
@@ -53,6 +63,9 @@ local current_pb_state
 local ERR_BUF_SIZE = 512
 local err_buf = ffi.new("char[?]", ERR_BUF_SIZE)
 local err_len = ffi.new("size_t[1]")
+--local gRPCClientStreamType = 1
+local gRPCServerStreamType = 2
+--local gRPCBidiretionalStreamType = 3
 
 
 function _M.load(filename)
@@ -123,7 +136,7 @@ function _M.connect(target, opt)
     ffi.gc(ctx, ctx_gc_handler)
     conn.ctx = ctx
 
-    return setmetatable(conn, mt)
+    return setmetatable(conn, Conn)
 end
 
 
@@ -140,6 +153,15 @@ end
 
 
 local function call_with_pb_state(r, ctx, m, path, req, opt)
+    local opt_buf = ffi.new("CallOpt[1]")
+    local opt_ptr = opt_buf[0]
+
+    if opt.timeout and opt.timeout > 0 then
+        opt_ptr.timeout = opt.timeout
+    else
+        opt_ptr.timeout = 60 * 1000
+    end
+
     pb.state(current_pb_state)
     local ok, encoded = pcall(pb.encode, m.input_type, req)
     pb.state(nil)
@@ -148,7 +170,8 @@ local function call_with_pb_state(r, ctx, m, path, req, opt)
     end
 
     err_len[0] = ERR_BUF_SIZE
-    local rc = C.ngx_http_grpc_cli_call(err_buf, err_len, r, ctx, path, #path, encoded, #encoded, opt)
+    local rc = C.ngx_http_grpc_cli_call(err_buf, err_len, r, ctx, path, #path, encoded, #encoded,
+                                        opt_buf)
     if rc ~= NGX_OK then
         local err = ffi.string(err_buf, err_len[0])
         return nil, "failed to call: " .. err
@@ -170,7 +193,7 @@ local function call_with_pb_state(r, ctx, m, path, req, opt)
 end
 
 
-function Conn:call(service, method, req, opt)
+local function prepare_grpc_op(op, self, service, method, req, opt)
     if protoc_inst == nil then
         return nil, "proto files not loaded"
     end
@@ -195,24 +218,87 @@ function Conn:call(service, method, req, opt)
         opt = {}
     end
 
-    local opt_buf = ffi.new("CallOpt[1]")
-    local opt_ptr = opt_buf[0]
-
-    if opt.timeout and opt.timeout > 0 then
-        opt_ptr.timeout = opt.timeout
-    else
-        opt_ptr.timeout = 60 * 1000
-    end
-
     local path = string.format("/%s/%s", service, method)
 
-    local res, err = call_with_pb_state(r, self.ctx, m, path, req, opt_buf)
+    local res, err = op(r, self.ctx, m, path, req, opt)
 
     if not res then
         return nil, err
     end
 
     return res
+end
+
+
+function Conn:call(service, method, req, opt)
+    return prepare_grpc_op(call_with_pb_state, self, service, method, req, opt)
+end
+
+
+local function stream_gc_handler(ctx)
+    C.ngx_http_grpc_cli_close_stream(ctx, nil)
+end
+
+
+local function new_server_stream(r, ctx, m, path, req, opt)
+    local opt_buf = ffi.new("CallOpt[1]")
+    local opt_ptr = opt_buf[0]
+
+    if opt.timeout and opt.timeout > 0 then
+        opt_ptr.timeout = opt.timeout
+    else
+        -- This timeout applies to the whole lifetime of the stream
+        -- To make the implementation simple, we set the timeout at operation level in Nginx
+        -- but set it for the whole lifetime in the grpc engine
+        opt_ptr.timeout = 60 * 60 * 1000
+    end
+
+    pb.state(current_pb_state)
+    local ok, encoded = pcall(pb.encode, m.input_type, req)
+    pb.state(nil)
+    if not ok then
+        return nil, "failed to encode: " .. encoded
+    end
+
+    err_len[0] = ERR_BUF_SIZE
+    local stream_ctx = C.ngx_http_grpc_cli_new_stream(err_buf, err_len, r, ctx, path, #path,
+                                                      encoded, #encoded,
+                                                      opt_buf, gRPCServerStreamType)
+    if stream_ctx == nil then
+        local err = ffi.string(err_buf, err_len[0])
+        return nil, "failed to new stream: " .. err
+    end
+
+    local ok, err = coroutine._yield()
+    if not ok then
+        return nil, "failed to new stream: " .. err
+    end
+
+    return stream_ctx
+end
+
+
+function Conn:new_server_stream(service, method, req, opt)
+    local stream_ctx, err = prepare_grpc_op(new_server_stream, self, service, method, req, opt)
+    if not stream_ctx then
+        return nil, err
+    end
+
+    local stream = {ctx = stream_ctx}
+    ffi.gc(stream_ctx, stream_gc_handler)
+    return setmetatable(stream, Stream)
+end
+
+
+function Stream:close()
+    if not self.ctx then
+        return
+    end
+
+    local r = get_request()
+    local ctx = self.ctx
+    self.ctx = nil
+    C.ngx_http_grpc_cli_close_stream(ctx, r)
 end
 
 

@@ -7,6 +7,12 @@ import (
 	"unsafe"
 )
 
+const (
+	GrpcResTypeOk       = 0
+	GrpcResTypeErr      = 1
+	GrpcResTypeOkNotRes = 2
+)
+
 var hostEndian binary.ByteOrder
 
 func init() {
@@ -61,7 +67,10 @@ func (self *taskQueue) Done(id uint64, result []byte, err error) {
 	if err != nil {
 		errStr := err.Error()
 		size = uint64(len(errStr))
-		ptrRes = uintptr(C.CBytes([]byte(errStr))) | 1
+		ptrRes = uintptr(C.CBytes([]byte(errStr))) | GrpcResTypeErr
+	} else if result == nil {
+		size = 0
+		ptrRes = GrpcResTypeOkNotRes
 	} else {
 		size = uint64(len(result))
 		ptrRes = uintptr(C.CBytes(result))
@@ -87,4 +96,11 @@ func WaitFinishedTasks() ([]byte, int) {
 
 func ReportFinishedTask(id uint64, result []byte, err error) {
 	finishedTaskQueue.Done(id, result, err)
+}
+
+func EncodePointerToBuf(ptr unsafe.Pointer) []byte {
+	ptrRes := uintptr(ptr)
+	buf := make([]byte, 8)
+	hostEndian.PutUint64(buf, uint64(ptrRes))
+	return buf
 }
