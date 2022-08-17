@@ -74,12 +74,16 @@ func Call(c *grpc.ClientConn, method string, req []byte, opt *CallOption) ([]byt
 	return out.Bytes(), nil
 }
 
-func NewStream(c *grpc.ClientConn, method string, req []byte, opt *CallOption, streamType int) (grpc.Stream, error) {
+type Stream struct {
+	grpc.ClientStream
+	cancel context.CancelFunc
+}
+
+func NewStream(c *grpc.ClientConn, method string, req []byte, opt *CallOption, streamType int) (*Stream, error) {
 	ctx := context.Background()
 	var cancel context.CancelFunc
 	if opt.Timeout > 0 {
 		ctx, cancel = context.WithTimeout(ctx, opt.Timeout)
-		defer cancel()
 	}
 
 	desc := &grpc.StreamDesc{}
@@ -97,18 +101,34 @@ func NewStream(c *grpc.ClientConn, method string, req []byte, opt *CallOption, s
 
 	cs, err := c.NewStream(ctx, desc, method)
 	if err != nil {
+		cancel()
 		return nil, err
 	}
 	if err := cs.SendMsg(req); err != nil {
+		cancel()
 		return nil, err
 	}
 
 	if streamType == ServerStream {
 		// TODO: non-ServerStream don't work like this
 		if err := cs.CloseSend(); err != nil {
+			cancel()
 			return nil, err
 		}
 	}
 
-	return cs, nil
+	s := &Stream{
+		ClientStream: cs,
+		cancel:       cancel,
+	}
+	return s, nil
+}
+
+func StreamRecv(s *Stream) ([]byte, error) {
+	cs := s.ClientStream
+	out := &bytes.Buffer{}
+	if err := cs.RecvMsg(out); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
 }

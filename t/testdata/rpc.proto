@@ -178,6 +178,26 @@ message DeleteRangeResponse {
   repeated KeyValue prev_kvs = 3;
 }
 
+message Event {
+  enum EventType {
+    PUT = 0;
+    DELETE = 1;
+  }
+  // type is the kind of event. If type is a PUT, it indicates
+  // new data has been stored to the key. If type is a DELETE,
+  // it indicates the key was deleted.
+  EventType type = 1;
+  // kv holds the KeyValue for the event.
+  // A PUT event contains current kv pair.
+  // A PUT event with kv.Version=1 indicates the creation of a key.
+  // A DELETE/EXPIRE event contains the deleted key with
+  // its modification revision set to the revision of deletion.
+  KeyValue kv = 2;
+
+  // prev_kv holds the key-value pair before the event happens.
+  KeyValue prev_kv = 3;
+}
+
 message WatchRequest {
   // request_union is a request to either create a new watcher or cancel an existing watcher.
   oneof request_union {
@@ -197,6 +217,9 @@ message WatchCreateRequest {
   // If the range_end is one bit larger than the given key,
   // then all keys with the prefix (the given key) will be watched.
   bytes range_end = 2;
+
+  // start_revision is an optional revision to watch from (inclusive). No start_revision is "now".
+  int64 start_revision = 3;
 }
 
 message WatchCancelRequest {
@@ -223,6 +246,24 @@ message WatchResponse {
   // canceled is set to true if the response is for a cancel watch request.
   // No further events will be sent to the canceled watcher.
   bool canceled = 4;
+
+  // compact_revision is set to the minimum index if a watcher tries to watch
+  // at a compacted index.
+  //
+  // This happens when creating a watcher at a compacted revision or the watcher cannot
+  // catch up with the progress of the key-value store.
+  //
+  // The client should treat the watcher as canceled and should not try to create any
+  // watcher with the same start_revision again.
+  int64 compact_revision = 5;
+
+  // cancel_reason indicates the reason for canceling the watcher.
+  string cancel_reason = 6;
+
+  // framgment is true if large watch response was split over multiple responses.
+  bool fragment = 7;
+
+  repeated Event events = 11;
 }
 
 service Watch {

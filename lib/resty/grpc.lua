@@ -36,6 +36,9 @@ ngx_http_grpc_cli_new_stream(unsigned char *err_buf, size_t *err_len,
 void
 ngx_http_grpc_cli_close_stream(void *ctx, ngx_http_request_t *r);
 int
+ngx_http_grpc_cli_stream_recv(unsigned char *err_buf, size_t *err_len,
+                              ngx_http_request_t *r, void *ctx, void *opt);
+int
 ngx_http_grpc_cli_call(unsigned char *err_buf, size_t *err_len,
                        ngx_http_request_t *r, void *ctx,
                        const char *method_data, int method_len,
@@ -193,7 +196,7 @@ local function call_with_pb_state(r, ctx, m, path, req, opt)
 end
 
 
-local function prepare_grpc_op(op, self, service, method, req, opt)
+function Conn:call(service, method, req, opt)
     if protoc_inst == nil then
         return nil, "proto files not loaded"
     end
@@ -220,7 +223,7 @@ local function prepare_grpc_op(op, self, service, method, req, opt)
 
     local path = string.format("/%s/%s", service, method)
 
-    local res, err = op(r, self.ctx, m, path, req, opt)
+    local res, err = call_with_pb_state(r, self.ctx, m, path, req, opt)
 
     if not res then
         return nil, err
@@ -230,17 +233,40 @@ local function prepare_grpc_op(op, self, service, method, req, opt)
 end
 
 
-function Conn:call(service, method, req, opt)
-    return prepare_grpc_op(call_with_pb_state, self, service, method, req, opt)
-end
-
-
 local function stream_gc_handler(ctx)
     C.ngx_http_grpc_cli_close_stream(ctx, nil)
 end
 
 
-local function new_server_stream(r, ctx, m, path, req, opt)
+function Conn:new_server_stream(service, method, req, opt)
+    if protoc_inst == nil then
+        return nil, "proto files not loaded"
+    end
+
+    if self.ctx == nil then
+        return nil, "closed"
+    end
+
+    local ctx = self.ctx
+
+    local r = get_request()
+
+    local serv = protoc_inst.index[service]
+    if not serv then
+        return nil, string.format("service %s not found", service)
+    end
+
+    local m = serv[method]
+    if not m then
+        return nil, string.format("method %s not found", method)
+    end
+
+    local path = string.format("/%s/%s", service, method)
+
+    if not opt then
+        opt = {}
+    end
+
     local opt_buf = ffi.new("CallOpt[1]")
     local opt_ptr = opt_buf[0]
 
@@ -250,7 +276,7 @@ local function new_server_stream(r, ctx, m, path, req, opt)
         -- This timeout applies to the whole lifetime of the stream
         -- To make the implementation simple, we set the timeout at operation level in Nginx
         -- but set it for the whole lifetime in the grpc engine
-        opt_ptr.timeout = 60 * 60 * 1000
+        opt_ptr.timeout = 60 * 1000
     end
 
     pb.state(current_pb_state)
@@ -274,17 +300,11 @@ local function new_server_stream(r, ctx, m, path, req, opt)
         return nil, "failed to new stream: " .. err
     end
 
-    return stream_ctx
-end
-
-
-function Conn:new_server_stream(service, method, req, opt)
-    local stream_ctx, err = prepare_grpc_op(new_server_stream, self, service, method, req, opt)
-    if not stream_ctx then
-        return nil, err
-    end
-
-    local stream = {ctx = stream_ctx}
+    local stream = {
+        ctx = stream_ctx,
+        output_type = m.output_type,
+        opt_buf = opt_buf,
+    }
     ffi.gc(stream_ctx, stream_gc_handler)
     return setmetatable(stream, Stream)
 end
@@ -299,6 +319,37 @@ function Stream:close()
     local ctx = self.ctx
     self.ctx = nil
     C.ngx_http_grpc_cli_close_stream(ctx, r)
+end
+
+
+function Stream:recv()
+    if self.ctx == nil then
+        return nil, "closed"
+    end
+
+    local ctx = self.ctx
+    local r = get_request()
+
+    err_len[0] = ERR_BUF_SIZE
+    local rc = C.ngx_http_grpc_cli_stream_recv(err_buf, err_len, r, ctx, self.opt_buf)
+    if rc ~= NGX_OK then
+        local err = ffi.string(err_buf, err_len[0])
+        return nil, "failed to recv: " .. err
+    end
+
+    local ok, resp_or_err = coroutine._yield()
+    if not ok then
+        return nil, "failed to recv: " .. resp_or_err
+    end
+
+    pb.state(current_pb_state)
+    local ok, decoded = pcall(pb.decode, self.output_type, resp_or_err)
+    pb.state(nil)
+    if not ok then
+        return nil, "failed to decode: " .. decoded
+    end
+
+    return decoded
 end
 
 

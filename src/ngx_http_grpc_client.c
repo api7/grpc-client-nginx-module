@@ -53,8 +53,6 @@ typedef struct {
     void                         *prev_data;
 
     ngx_http_grpc_cli_task_res_t  res;
-    u_char                       *err_buf;
-    size_t                       *err_len;
     int                           state;
 
     ngx_rbtree_node_t            *node;
@@ -116,6 +114,7 @@ static void (*grpc_engine_call)(unsigned char *, size_t *,
 static void (*grpc_engine_new_stream)(unsigned char *, size_t *,
                                       uint64_t, void *, const char *, int, const char *, int,
                                       void *, int);
+static void (*grpc_engine_stream_recv) (void *);
 static void (*grpc_engine_close) (void *);
 static void (*grpc_engine_close_stream) (void *);
 static void (*grpc_engine_free) (void *);
@@ -464,6 +463,7 @@ ngx_http_grpc_cli_to_resume(ngx_http_grpc_cli_stream_ctx_t *ctx)
     ngx_http_lua_assert(lctx != NULL);
 
     lctx->cur_co_ctx = ctx->wait_co_ctx;
+    ctx->wait_co_ctx = NULL;
     ctx->prev_data = lctx->cur_co_ctx->data;
     lctx->cur_co_ctx->data = ctx;
 
@@ -638,6 +638,7 @@ ngx_http_grpc_cli_init_worker(ngx_cycle_t *cycle)
     must_resolve_symbol(gccf->engine, grpc_engine_free);
     must_resolve_symbol(gccf->engine, grpc_engine_call);
     must_resolve_symbol(gccf->engine, grpc_engine_new_stream);
+    must_resolve_symbol(gccf->engine, grpc_engine_stream_recv);
     must_resolve_symbol(gccf->engine, grpc_engine_wait);
 
     ngx_http_grpc_cli_ongoing_tasks_num = 0;
@@ -777,6 +778,22 @@ ngx_http_grpc_cli_free(void *data)
 }
 
 
+static int
+ngx_http_grpc_cli_schedule_task_thread_if_needed(ngx_http_grpc_cli_main_conf_t  *gccf)
+{
+    if (!gccf->task->event.active) {
+        ngx_log_debug0(NGX_LOG_DEBUG_HTTP, ngx_cycle->log, 0, "post grpc client thread");
+
+        /* kick off background thread for the first task */
+        if (ngx_thread_task_post(gccf->thread_pool, gccf->task) != NGX_OK) {
+            return NGX_ERROR;
+        }
+    }
+
+    return NGX_OK;
+}
+
+
 void *
 ngx_http_grpc_cli_new_stream(unsigned char *err_buf, size_t *err_len,
                              ngx_http_request_t *r, ngx_http_grpc_cli_ctx_t *ctx,
@@ -810,14 +827,10 @@ ngx_http_grpc_cli_new_stream(unsigned char *err_buf, size_t *err_len,
         return NULL;
     }
 
-    if (!gccf->task->event.active) {
-        ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "post grpc client thread");
-
-        /* kick off background thread for the first task */
-        if (ngx_thread_task_post(gccf->thread_pool, gccf->task) != NGX_OK) {
-            *err_len = ngx_snprintf(err_buf, *err_len, "task post failed") - err_buf;
-            return NULL;
-        }
+    rc = ngx_http_grpc_cli_schedule_task_thread_if_needed(gccf);
+    if (rc != NGX_OK) {
+        *err_len = ngx_snprintf(err_buf, *err_len, "task post failed") - err_buf;
+        return NULL;
     }
 
     if (!ngx_queue_empty(&ctx->free)) {
@@ -838,8 +851,6 @@ ngx_http_grpc_cli_new_stream(unsigned char *err_buf, size_t *err_len,
 
     wait_co_ctx = lctx->cur_co_ctx;
     sctx->wait_co_ctx = wait_co_ctx;
-    sctx->err_buf = err_buf;
-    sctx->err_len = err_len;
     sctx->state = NGX_HTTP_GRPC_CLIENT_STATE_OK;
     sctx->r = r;
     sctx->parent = ctx;
@@ -927,6 +938,7 @@ ngx_http_grpc_cli_close_stream(ngx_http_grpc_cli_stream_ctx_t *sctx, ngx_http_re
     ctx = sctx->parent;
     ngx_queue_remove(&sctx->queue);
     ngx_queue_insert_head(&ctx->free, &sctx->queue);
+    sctx->r = NULL;
 
     ngx_log_debug2(NGX_LOG_DEBUG_HTTP, log, 0, "free gRPC stream ctx:%p, gRPC ctx:%p",
                    sctx, ctx);
@@ -936,4 +948,78 @@ ngx_http_grpc_cli_close_stream(ngx_http_grpc_cli_stream_ctx_t *sctx, ngx_http_re
 
         ngx_http_grpc_cli_free_conn(ctx, log);
     }
+}
+
+
+int
+ngx_http_grpc_cli_stream_recv(unsigned char *err_buf, size_t *err_len,
+                              ngx_http_request_t *r, ngx_http_grpc_cli_stream_ctx_t *sctx,
+                              ngx_http_grpc_cli_call_opt_t *call_opt)
+{
+    ngx_int_t                       rc;
+    ngx_msec_t                      timeout;
+    ngx_http_lua_ctx_t             *lctx;
+    ngx_http_lua_co_ctx_t          *wait_co_ctx;
+    ngx_http_grpc_cli_main_conf_t  *gccf;
+
+    gccf = ngx_http_cycle_get_module_main_conf(ngx_cycle, ngx_http_grpc_client_module);
+
+    if (sctx->r == NULL) {
+        *err_len = ngx_snprintf(err_buf, *err_len, "closed") - err_buf;
+        return NGX_ERROR;
+    }
+
+    if (sctx->r != r) {
+        *err_len = ngx_snprintf(err_buf, *err_len, "bad request") - err_buf;
+        return NGX_ERROR;
+    }
+
+    if (sctx->wait_co_ctx != NULL) {
+        *err_len = ngx_snprintf(err_buf, *err_len, "busy waiting") - err_buf;
+        return NGX_ERROR;
+    }
+
+    lctx = ngx_http_get_module_ctx(r, ngx_http_lua_module);
+    if (lctx == NULL) {
+        *err_len = ngx_snprintf(err_buf, *err_len, "no request ctx found") - err_buf;
+        return NGX_ERROR;
+    }
+
+    rc = ngx_http_lua_ffi_check_context(lctx, NGX_HTTP_LUA_CONTEXT_YIELDABLE,
+                                        err_buf, err_len);
+    if (rc != NGX_OK) {
+        return NGX_ERROR;
+    }
+
+    timeout = call_opt->timeout;
+
+    rc = ngx_http_grpc_cli_schedule_task_thread_if_needed(gccf);
+    if (rc != NGX_OK) {
+        *err_len = ngx_snprintf(err_buf, *err_len, "task post failed") - err_buf;
+        return NGX_ERROR;
+    }
+
+    wait_co_ctx = lctx->cur_co_ctx;
+    sctx->wait_co_ctx = wait_co_ctx;
+    sctx->state = NGX_HTTP_GRPC_CLIENT_STATE_OK;
+
+    if (ngx_http_grpc_cli_keep_task(sctx, r->connection->log) != NGX_OK) {
+        *err_len = ngx_snprintf(err_buf, *err_len, "no memory") - err_buf;
+        return NGX_ERROR;
+    }
+
+    wait_co_ctx->data = sctx;
+    wait_co_ctx->sleep.handler = ngx_http_grpc_cli_timeout_handler;
+    wait_co_ctx->sleep.data = wait_co_ctx;
+    wait_co_ctx->sleep.log = r->connection->log;
+    ngx_add_timer(&wait_co_ctx->sleep, timeout);
+
+    wait_co_ctx->cleanup = ngx_http_grpc_cli_cleanup;
+
+    grpc_engine_stream_recv(sctx);
+
+    ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "yield gRPC stream:%p, timeout:%M",
+                   sctx, timeout);
+
+    return NGX_OK;
 }
