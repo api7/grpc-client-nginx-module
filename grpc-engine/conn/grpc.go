@@ -124,11 +124,18 @@ func NewStream(c *grpc.ClientConn, method string, req []byte, opt *CallOption, s
 	return s, nil
 }
 
-func StreamRecv(s *Stream) ([]byte, error) {
+func (s *Stream) Recv() ([]byte, error) {
 	cs := s.ClientStream
 	out := &bytes.Buffer{}
 	if err := cs.RecvMsg(out); err != nil {
 		return nil, err
 	}
 	return out.Bytes(), nil
+}
+
+func (s *Stream) Close() {
+	if s.cancel != nil {
+		s.cancel()
+		s.cancel = nil
+	}
 }

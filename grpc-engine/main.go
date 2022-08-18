@@ -155,7 +155,13 @@ func grpc_engine_new_stream(errBuf unsafe.Pointer, errLen *C.size_t,
 
 //export grpc_engine_close_stream
 func grpc_engine_close_stream(sctx unsafe.Pointer) {
+	s, found := StreamRef[sctx]
+	if !found {
+		// stream is already closed
+		return
+	}
 	delete(StreamRef, sctx)
+	s.Close()
 }
 
 //export grpc_engine_stream_recv
@@ -163,7 +169,7 @@ func grpc_engine_stream_recv(sctx unsafe.Pointer) {
 	s := StreamRef[sctx]
 
 	go func() {
-		out, err := conn.StreamRecv(s)
+		out, err := s.Recv()
 		task.ReportFinishedTask(uint64(uintptr(sctx)), out, err)
 	}()
 }

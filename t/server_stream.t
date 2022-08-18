@@ -163,4 +163,4 @@ location /t {
     }
 }
 --- response_body eval
-qr/context deadline exceeded/
+qr/(context deadline exceeded|timeout)/
