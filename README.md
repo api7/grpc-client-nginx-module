@@ -80,7 +80,7 @@ callOpt:
 * `timeout`: Set the timeout value in milliseconds for the whole call.
 60000 milliseconds by default. Nginx exits only after all running tasks
 in the background thread are done, so a long timeout may block Nginx from
-exiting.
+exiting. (TODO: remove this limitation by setting a timeout for the background thread)
 
 ### new_server_stream
 
@@ -93,7 +93,14 @@ The `stream` is the server stream which can be used to read the data.
 callOpt:
 
 * `timeout`: Set the timeout value in milliseconds for the whole lifetime of
-the stream. 3600 seconds by default.
+the stream. 60000 milliseconds by default.
+
+### recv
+
+**syntax:** *res, err = stream:recv()*
+
+Receive a response from the stream.
+The `res` is a Lua table that is decoded from the proto message.
 
 ## Why don't we
 

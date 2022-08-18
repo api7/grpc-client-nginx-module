@@ -40,6 +40,7 @@ func init() {
 		panic(err)
 	}
 	log.Default().SetOutput(f)
+	log.Default().SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.Lshortfile)
 }
 
 const (
@@ -52,7 +53,7 @@ type EngineCtx struct {
 }
 
 var EngineCtxRef = map[unsafe.Pointer]*EngineCtx{}
-var StreamRef = map[unsafe.Pointer]grpc.Stream{}
+var StreamRef = map[unsafe.Pointer]*conn.Stream{}
 
 func reportErr(err error, errBuf unsafe.Pointer, errLen *C.size_t) {
 	s := err.Error()
@@ -141,13 +142,13 @@ func grpc_engine_new_stream(errBuf unsafe.Pointer, errLen *C.size_t,
 	}
 
 	go func() {
-		cs, err := conn.NewStream(c, method, req, co, int(streamType))
+		s, err := conn.NewStream(c, method, req, co, int(streamType))
 		if err != nil {
 			task.ReportFinishedTask(uint64(uintptr(sctx)), nil, err)
 			return
 		}
 
-		StreamRef[sctx] = cs
+		StreamRef[sctx] = s
 		task.ReportFinishedTask(uint64(uintptr(sctx)), nil, nil)
 	}()
 }
@@ -155,6 +156,16 @@ func grpc_engine_new_stream(errBuf unsafe.Pointer, errLen *C.size_t,
 //export grpc_engine_close_stream
 func grpc_engine_close_stream(sctx unsafe.Pointer) {
 	delete(StreamRef, sctx)
+}
+
+//export grpc_engine_stream_recv
+func grpc_engine_stream_recv(sctx unsafe.Pointer) {
+	s := StreamRef[sctx]
+
+	go func() {
+		out, err := conn.StreamRecv(s)
+		task.ReportFinishedTask(uint64(uintptr(sctx)), out, err)
+	}()
 }
 
 //export grpc_engine_free
