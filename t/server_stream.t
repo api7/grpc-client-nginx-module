@@ -100,25 +100,34 @@ location /t {
 
         local conn = assert(gcli.connect("127.0.0.1:2379"))
 
-        local function co(i)
+        local function co(st, i)
+            local res = assert(st:recv())
+            for n = 1, #res.events do
+                ngx.log(ngx.WARN, i, ": event type: ", res.events[n].type)
+            end
+            assert(res.events[1].type == "PUT")
+
+            local ev
+            if not res.events[2] then
+                res = assert(st:recv())
+                ev = res.events[1]
+            else
+                ev = res.events[2]
+            end
+            ngx.log(ngx.WARN, i, ": event type: ", ev.type)
+            assert(ev.type == "DELETE")
+            ngx.log(ngx.WARN, i, ": event on key: ", ev.kv.key)
+        end
+
+        local ths = {}
+        for i = 1, 5 do
             local st, err = conn:new_server_stream("etcdserverpb.Watch", "Watch", {create_request = {key = 'k'}}, {timeout = 3000})
             if not st then
                 ngx.say(err)
                 return
             end
             assert(st:recv())
-            local res = assert(st:recv())
-            ngx.log(ngx.WARN, i, ": event type: ", res.events[1].type)
-            assert(res.events[1].type == "PUT")
-            local res = assert(st:recv())
-            ngx.log(ngx.WARN, i, ": event type: ", res.events[1].type)
-            assert(res.events[1].type == "DELETE")
-            ngx.log(ngx.WARN, "event on key: ", res.events[1].kv.key)
-        end
-
-        local ths = {}
-        for i = 1, 5 do
-            local th = ngx.thread.spawn(co, i)
+            local th = ngx.thread.spawn(co, st, i)
             table.insert(ths, th)
         end
 
