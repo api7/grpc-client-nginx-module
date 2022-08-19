@@ -293,6 +293,10 @@ ngx_http_grpc_cli_keep_task(ngx_http_grpc_cli_stream_ctx_t *ctx, ngx_log_t *log)
 
     node->key = (ngx_rbtree_key_t) ctx;
     ngx_http_grpc_cli_ongoing_tasks_num++;
+
+    ngx_log_debug2(NGX_LOG_DEBUG_HTTP, log, 0, "increase ongoing tasks to %d, stream: %p",
+                   ngx_http_grpc_cli_ongoing_tasks_num, ctx);
+
     ngx_rbtree_insert(&ngx_http_grpc_cli_ongoing_tasks, node);
     ctx->node = node;
 
@@ -308,6 +312,11 @@ ngx_http_grpc_cli_unkeep_task(ngx_http_grpc_cli_stream_ctx_t *ctx)
     }
 
     ngx_http_grpc_cli_ongoing_tasks_num--;
+
+    ngx_log_debug2(NGX_LOG_DEBUG_HTTP, ngx_cycle->log, 0,
+                   "decrease ongoing tasks to %d, stream: %p",
+                   ngx_http_grpc_cli_ongoing_tasks_num, ctx);
+
     ngx_rbtree_delete(&ngx_http_grpc_cli_ongoing_tasks, ctx->node);
     ngx_free(ctx->node);
     ctx->node = NULL;
