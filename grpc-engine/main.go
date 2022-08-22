@@ -21,6 +21,7 @@ import (
 	"errors"
 	"log"
 	"os"
+	"sync"
 	"time"
 	"unsafe"
 
@@ -52,8 +53,8 @@ type EngineCtx struct {
 	c *grpc.ClientConn
 }
 
-var EngineCtxRef = map[unsafe.Pointer]*EngineCtx{}
-var StreamRef = map[unsafe.Pointer]*conn.Stream{}
+var EngineCtxRef = sync.Map{}
+var StreamRef = sync.Map{}
 
 func reportErr(err error, errBuf unsafe.Pointer, errLen *C.size_t) {
 	s := err.Error()
@@ -64,6 +65,14 @@ func reportErr(err error, errBuf unsafe.Pointer, errLen *C.size_t) {
 	pp := (*[1 << 30]byte)(errBuf)
 	copy(pp[:], s)
 	*errLen = C.size_t(len(s))
+}
+
+func mustFind(m *sync.Map, ref unsafe.Pointer) interface{} {
+	res, found := m.Load(ref)
+	if !found {
+		log.Panicf("can't find with ref %v", ref)
+	}
+	return res
 }
 
 //export grpc_engine_connect
@@ -92,16 +101,20 @@ func grpc_engine_connect(errBuf unsafe.Pointer, errLen *C.size_t,
 		return nil
 	}
 
-	EngineCtxRef[ref] = &ctx
+	EngineCtxRef.Store(ref, &ctx)
 	return ref
 }
 
 //export grpc_engine_close
 func grpc_engine_close(ref unsafe.Pointer) {
-	ctx := EngineCtxRef[ref]
+	res, found := EngineCtxRef.LoadAndDelete(ref)
+	if !found {
+		return
+	}
+
+	ctx := res.(*EngineCtx)
 	conn.Close(ctx.c)
 
-	delete(EngineCtxRef, ref)
 	C.free(ref)
 }
 
@@ -114,7 +127,7 @@ func grpc_engine_call(errBuf unsafe.Pointer, errLen *C.size_t,
 ) {
 	method := string(C.GoBytes(methodData, methodLen))
 	req := C.GoBytes(reqData, reqLen)
-	ctx := EngineCtxRef[ref]
+	ctx := mustFind(&EngineCtxRef, ref).(*EngineCtx)
 	c := ctx.c
 	co := &conn.CallOption{
 		Timeout: time.Duration(opt.timeout) * time.Millisecond,
@@ -135,7 +148,7 @@ func grpc_engine_new_stream(errBuf unsafe.Pointer, errLen *C.size_t,
 ) {
 	method := string(C.GoBytes(methodData, methodLen))
 	req := C.GoBytes(reqData, reqLen)
-	ctx := EngineCtxRef[ref]
+	ctx := mustFind(&EngineCtxRef, ref).(*EngineCtx)
 	c := ctx.c
 	co := &conn.CallOption{
 		Timeout: time.Duration(opt.timeout) * time.Millisecond,
@@ -148,25 +161,26 @@ func grpc_engine_new_stream(errBuf unsafe.Pointer, errLen *C.size_t,
 			return
 		}
 
-		StreamRef[sctx] = s
+		StreamRef.Store(sctx, s)
 		task.ReportFinishedTask(uint64(uintptr(sctx)), nil, nil)
 	}()
 }
 
 //export grpc_engine_close_stream
 func grpc_engine_close_stream(sctx unsafe.Pointer) {
-	s, found := StreamRef[sctx]
+	res, found := StreamRef.LoadAndDelete(sctx)
 	if !found {
 		// stream is already closed
 		return
 	}
-	delete(StreamRef, sctx)
+
+	s := res.(*conn.Stream)
 	s.Close()
 }
 
 //export grpc_engine_stream_recv
 func grpc_engine_stream_recv(sctx unsafe.Pointer) {
-	s := StreamRef[sctx]
+	s := mustFind(&StreamRef, sctx).(*conn.Stream)
 
 	go func() {
 		out, err := s.Recv()
