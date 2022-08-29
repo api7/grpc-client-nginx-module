@@ -20,7 +20,7 @@ cd ./grpc-engine &&  go build -o libgrpc_engine.so -buildmode=c-shared main.go
 
 After that, install the Lua rock:
 
-TODO
+luarocks install grpc-client-nginx-module
 
 Finally, setup the thread pool and load the shared library:
 
