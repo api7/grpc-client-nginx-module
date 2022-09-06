@@ -27,3 +27,10 @@ services:
       - "12380:12380"
     volumes:
       - ./t/certs:/certs
+
+  backend:
+    image: grpc-client-nginx-module-test-backend:latest
+    restart: unless-stopped
+    build: ./t/backend
+    ports:
+      - "50051:50051"
