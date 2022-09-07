@@ -43,6 +43,9 @@ ngx_http_grpc_cli_stream_send(unsigned char *err_buf, size_t *err_len,
                               ngx_http_request_t *r, void *ctx, void *opt,
                               const char *req_data, int req_len);
 int
+ngx_http_grpc_cli_stream_close_send(unsigned char *err_buf, size_t *err_len,
+                                    ngx_http_request_t *r, void *ctx, void *opt);
+int
 ngx_http_grpc_cli_call(unsigned char *err_buf, size_t *err_len,
                        ngx_http_request_t *r, void *ctx,
                        const char *method_data, int method_len,
@@ -416,6 +419,30 @@ local function stream_send(self, req)
 end
 
 
+local function stream_close_send(self, req)
+    if self.ctx == nil then
+        return nil, "closed"
+    end
+
+    local ctx = self.ctx
+    local r = get_request()
+
+    err_len[0] = ERR_BUF_SIZE
+    local rc = C.ngx_http_grpc_cli_stream_close_send(err_buf, err_len, r, ctx, self.opt_buf)
+    if rc ~= NGX_OK then
+        local err = ffi.string(err_buf, err_len[0])
+        return nil, "failed to close send: " .. err
+    end
+
+    local ok, err = coroutine._yield()
+    if not ok then
+        return nil, "failed to close send: " .. err
+    end
+
+    return ok
+end
+
+
 local function stream_recv_close(self)
     local res, err = stream_recv(self)
     if not res then
@@ -437,6 +464,7 @@ ClientStream.recv_close = stream_recv_close
 
 BidirectionalStream.close = stream_close
 BidirectionalStream.send = stream_send
+BidirectionalStream.close_send = stream_close_send
 BidirectionalStream.recv = stream_recv
 
 

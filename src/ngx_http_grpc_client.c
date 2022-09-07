@@ -116,6 +116,7 @@ static void (*grpc_engine_new_stream)(unsigned char *, size_t *,
                                       void *, int);
 static void (*grpc_engine_stream_recv) (void *);
 static void (*grpc_engine_stream_send) (void *, const char *, int);
+static void (*grpc_engine_stream_close_send) (void *);
 static void (*grpc_engine_close) (void *);
 static void (*grpc_engine_close_stream) (void *);
 static void (*grpc_engine_free) (void *);
@@ -652,6 +653,7 @@ ngx_http_grpc_cli_init_worker(ngx_cycle_t *cycle)
     must_resolve_symbol(gccf->engine, grpc_engine_new_stream);
     must_resolve_symbol(gccf->engine, grpc_engine_stream_recv);
     must_resolve_symbol(gccf->engine, grpc_engine_stream_send);
+    must_resolve_symbol(gccf->engine, grpc_engine_stream_close_send);
     must_resolve_symbol(gccf->engine, grpc_engine_wait);
 
     ngx_http_grpc_cli_ongoing_tasks_num = 0;
@@ -1104,6 +1106,69 @@ ngx_http_grpc_cli_stream_send(unsigned char *err_buf, size_t *err_len,
     timeout = call_opt->timeout;
 
     grpc_engine_stream_send(sctx, req_data, req_len);
+
+    ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "yield gRPC stream:%p, timeout:%M",
+                   sctx, timeout);
+
+    return NGX_OK;
+}
+
+
+int
+ngx_http_grpc_cli_stream_close_send(unsigned char *err_buf, size_t *err_len,
+                                    ngx_http_request_t *r, ngx_http_grpc_cli_stream_ctx_t *sctx,
+                                    ngx_http_grpc_cli_call_opt_t *call_opt)
+{
+    ngx_int_t                       rc;
+    ngx_msec_t                      timeout;
+    ngx_http_lua_ctx_t             *lctx;
+    ngx_http_grpc_cli_main_conf_t  *gccf;
+
+    gccf = ngx_http_cycle_get_module_main_conf(ngx_cycle, ngx_http_grpc_client_module);
+
+    if (sctx->r == NULL) {
+        *err_len = ngx_snprintf(err_buf, *err_len, "closed") - err_buf;
+        return NGX_ERROR;
+    }
+
+    if (sctx->r != r) {
+        *err_len = ngx_snprintf(err_buf, *err_len, "bad request") - err_buf;
+        return NGX_ERROR;
+    }
+
+    if (sctx->wait_co_ctx != NULL) {
+        /* it is not safe to call close_send when the stream is sending */
+        *err_len = ngx_snprintf(err_buf, *err_len, "busy waiting") - err_buf;
+        return NGX_ERROR;
+    }
+
+    lctx = ngx_http_get_module_ctx(r, ngx_http_lua_module);
+    if (lctx == NULL) {
+        *err_len = ngx_snprintf(err_buf, *err_len, "no request ctx found") - err_buf;
+        return NGX_ERROR;
+    }
+
+    rc = ngx_http_lua_ffi_check_context(lctx, NGX_HTTP_LUA_CONTEXT_YIELDABLE,
+                                        err_buf, err_len);
+    if (rc != NGX_OK) {
+        return NGX_ERROR;
+    }
+
+    rc = ngx_http_grpc_cli_kick_off_task(gccf, r, lctx, sctx, call_opt);
+
+    if (rc == NGX_ERROR) {
+        *err_len = ngx_snprintf(err_buf, *err_len, "task post failed") - err_buf;
+        return NGX_ERROR;
+    }
+
+    if (rc == NGX_DECLINED) {
+        *err_len = ngx_snprintf(err_buf, *err_len, "no memory") - err_buf;
+        return NGX_ERROR;
+    }
+
+    timeout = call_opt->timeout;
+
+    grpc_engine_stream_close_send(sctx);
 
     ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "yield gRPC stream:%p, timeout:%M",
                    sctx, timeout);
