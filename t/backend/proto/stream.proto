@@ -7,6 +7,10 @@ service ClientStream {
   rpc Recv (stream RecvReq) returns (RecvResp) {}
 }
 
+service BidirectionalStream {
+  rpc Echo (stream RecvReq) returns (stream RecvResp) {}
+}
+
 message RecvReq {
     string data = 1;
 }

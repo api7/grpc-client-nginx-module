@@ -129,6 +129,22 @@ The `request` is a Lua table that will be encoded according to the proto.
 Receive a response from the stream and close the stream.
 The `res` is a Lua table that is decoded from the proto message.
 
+### new_bidirectional_stream
+
+**syntax:** *stream, err = conn:new_bidirectional_stream(service, method, request, callOpt)*
+
+Create a bidirectional stream.
+The `request` is a Lua table that will be encoded according to the proto.
+The `stream` is the client stream which can be used to send/recv the data.
+
+callOpt:
+
+* `timeout`: Set the timeout value in milliseconds for the whole lifetime of
+the stream. 60000 milliseconds by default.
+
+The bidirectional stream has `send` and `recv`, which are equal to the corresponding
+version in client/server streams.
+
 ## Why don't we
 
 ### Why don't we use the gRPC code in Nginx

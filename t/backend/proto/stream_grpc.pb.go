@@ -133,3 +133,121 @@ var ClientStream_ServiceDesc = grpc.ServiceDesc{
 	},
 	Metadata: "proto/stream.proto",
 }
+
+// BidirectionalStreamClient is the client API for BidirectionalStream service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type BidirectionalStreamClient interface {
+	Echo(ctx context.Context, opts ...grpc.CallOption) (BidirectionalStream_EchoClient, error)
+}
+
+type bidirectionalStreamClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewBidirectionalStreamClient(cc grpc.ClientConnInterface) BidirectionalStreamClient {
+	return &bidirectionalStreamClient{cc}
+}
+
+func (c *bidirectionalStreamClient) Echo(ctx context.Context, opts ...grpc.CallOption) (BidirectionalStream_EchoClient, error) {
+	stream, err := c.cc.NewStream(ctx, &BidirectionalStream_ServiceDesc.Streams[0], "/stream.BidirectionalStream/Echo", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &bidirectionalStreamEchoClient{stream}
+	return x, nil
+}
+
+type BidirectionalStream_EchoClient interface {
+	Send(*RecvReq) error
+	Recv() (*RecvResp, error)
+	grpc.ClientStream
+}
+
+type bidirectionalStreamEchoClient struct {
+	grpc.ClientStream
+}
+
+func (x *bidirectionalStreamEchoClient) Send(m *RecvReq) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *bidirectionalStreamEchoClient) Recv() (*RecvResp, error) {
+	m := new(RecvResp)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// BidirectionalStreamServer is the server API for BidirectionalStream service.
+// All implementations must embed UnimplementedBidirectionalStreamServer
+// for forward compatibility
+type BidirectionalStreamServer interface {
+	Echo(BidirectionalStream_EchoServer) error
+	mustEmbedUnimplementedBidirectionalStreamServer()
+}
+
+// UnimplementedBidirectionalStreamServer must be embedded to have forward compatible implementations.
+type UnimplementedBidirectionalStreamServer struct {
+}
+
+func (UnimplementedBidirectionalStreamServer) Echo(BidirectionalStream_EchoServer) error {
+	return status.Errorf(codes.Unimplemented, "method Echo not implemented")
+}
+func (UnimplementedBidirectionalStreamServer) mustEmbedUnimplementedBidirectionalStreamServer() {}
+
+// UnsafeBidirectionalStreamServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to BidirectionalStreamServer will
+// result in compilation errors.
+type UnsafeBidirectionalStreamServer interface {
+	mustEmbedUnimplementedBidirectionalStreamServer()
+}
+
+func RegisterBidirectionalStreamServer(s grpc.ServiceRegistrar, srv BidirectionalStreamServer) {
+	s.RegisterService(&BidirectionalStream_ServiceDesc, srv)
+}
+
+func _BidirectionalStream_Echo_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(BidirectionalStreamServer).Echo(&bidirectionalStreamEchoServer{stream})
+}
+
+type BidirectionalStream_EchoServer interface {
+	Send(*RecvResp) error
+	Recv() (*RecvReq, error)
+	grpc.ServerStream
+}
+
+type bidirectionalStreamEchoServer struct {
+	grpc.ServerStream
+}
+
+func (x *bidirectionalStreamEchoServer) Send(m *RecvResp) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *bidirectionalStreamEchoServer) Recv() (*RecvReq, error) {
+	m := new(RecvReq)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// BidirectionalStream_ServiceDesc is the grpc.ServiceDesc for BidirectionalStream service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var BidirectionalStream_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "stream.BidirectionalStream",
+	HandlerType: (*BidirectionalStreamServer)(nil),
+	Methods:     []grpc.MethodDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "Echo",
+			Handler:       _BidirectionalStream_Echo_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+	},
+	Metadata: "proto/stream.proto",
+}
