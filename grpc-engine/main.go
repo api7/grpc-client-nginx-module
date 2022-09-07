@@ -188,6 +188,22 @@ func grpc_engine_stream_recv(sctx unsafe.Pointer) {
 	}()
 }
 
+//export grpc_engine_stream_send
+func grpc_engine_stream_send(sctx unsafe.Pointer, reqData unsafe.Pointer, reqLen C.int) {
+	s := mustFind(&StreamRef, sctx).(*conn.Stream)
+	req := C.GoBytes(reqData, reqLen)
+
+	go func() {
+		_, err := s.Send(req)
+		if err != nil {
+			task.ReportFinishedTask(uint64(uintptr(sctx)), nil, err)
+			return
+		}
+
+		task.ReportFinishedTask(uint64(uintptr(sctx)), nil, nil)
+	}()
+}
+
 //export grpc_engine_free
 func grpc_engine_free(ptr unsafe.Pointer) {
 	C.free(ptr)

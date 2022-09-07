@@ -29,15 +29,19 @@ void
 ngx_http_grpc_cli_close(void *ctx, ngx_http_request_t *r);
 void *
 ngx_http_grpc_cli_new_stream(unsigned char *err_buf, size_t *err_len,
-                              ngx_http_request_t *r, void *ctx,
-                              const char *method_data, int method_len,
-                              const char *req_data, int req_len,
-                              void *opt, int type);
+                             ngx_http_request_t *r, void *ctx,
+                             const char *method_data, int method_len,
+                             const char *req_data, int req_len,
+                             void *opt, int type);
 void
 ngx_http_grpc_cli_close_stream(void *ctx, ngx_http_request_t *r);
 int
 ngx_http_grpc_cli_stream_recv(unsigned char *err_buf, size_t *err_len,
                               ngx_http_request_t *r, void *ctx, void *opt);
+int
+ngx_http_grpc_cli_stream_send(unsigned char *err_buf, size_t *err_len,
+                              ngx_http_request_t *r, void *ctx, void *opt,
+                              const char *req_data, int req_len);
 int
 ngx_http_grpc_cli_call(unsigned char *err_buf, size_t *err_len,
                        ngx_http_request_t *r, void *ctx,
@@ -57,8 +61,10 @@ end
 local _M = {}
 local Conn = {}
 Conn.__index = Conn
-local Stream = {}
-Stream.__index = Stream
+local ClientStream = {}
+ClientStream.__index = ClientStream
+local ServerStream = {}
+ServerStream.__index = ServerStream
 
 local protoc_inst
 local current_pb_state
@@ -66,7 +72,7 @@ local current_pb_state
 local ERR_BUF_SIZE = 512
 local err_buf = ffi.new("char[?]", ERR_BUF_SIZE)
 local err_len = ffi.new("size_t[1]")
---local gRPCClientStreamType = 1
+local gRPCClientStreamType = 1
 local gRPCServerStreamType = 2
 --local gRPCBidiretionalStreamType = 3
 
@@ -238,7 +244,7 @@ local function stream_gc_handler(ctx)
 end
 
 
-function Conn:new_server_stream(service, method, req, opt)
+local function new_stream(self, service, method, req, opt, stream_type)
     if protoc_inst == nil then
         return nil, "proto files not loaded"
     end
@@ -289,7 +295,7 @@ function Conn:new_server_stream(service, method, req, opt)
     err_len[0] = ERR_BUF_SIZE
     local stream_ctx = C.ngx_http_grpc_cli_new_stream(err_buf, err_len, r, ctx, path, #path,
                                                       encoded, #encoded,
-                                                      opt_buf, gRPCServerStreamType)
+                                                      opt_buf, stream_type)
     if stream_ctx == nil then
         local err = ffi.string(err_buf, err_len[0])
         return nil, "failed to new stream: " .. err
@@ -302,15 +308,31 @@ function Conn:new_server_stream(service, method, req, opt)
 
     local stream = {
         ctx = stream_ctx,
+        input_type = m.input_type,
         output_type = m.output_type,
         opt_buf = opt_buf,
     }
     ffi.gc(stream_ctx, stream_gc_handler)
-    return setmetatable(stream, Stream)
+
+    if stream_type == gRPCServerStreamType then
+        return setmetatable(stream, ServerStream)
+    else
+        return setmetatable(stream, ClientStream)
+    end
 end
 
 
-function Stream:close()
+function Conn:new_client_stream(service, method, req, opt)
+    return new_stream(self, service, method, req, opt, gRPCClientStreamType)
+end
+
+
+function Conn:new_server_stream(service, method, req, opt)
+    return new_stream(self, service, method, req, opt, gRPCServerStreamType)
+end
+
+
+local function stream_close(self)
     if not self.ctx then
         return
     end
@@ -322,7 +344,7 @@ function Stream:close()
 end
 
 
-function Stream:recv()
+local function stream_recv(self)
     if self.ctx == nil then
         return nil, "closed"
     end
@@ -351,6 +373,58 @@ function Stream:recv()
 
     return decoded
 end
+
+
+local function stream_send(self, req)
+    if self.ctx == nil then
+        return nil, "closed"
+    end
+
+    local ctx = self.ctx
+    local r = get_request()
+
+    pb.state(current_pb_state)
+    local ok, encoded = pcall(pb.encode, self.input_type, req)
+    if not ok then
+        return nil, "failed to encode: " .. encoded
+    end
+    pb.state(nil)
+
+    err_len[0] = ERR_BUF_SIZE
+    local rc = C.ngx_http_grpc_cli_stream_send(err_buf, err_len, r, ctx, self.opt_buf,
+                                               encoded, #encoded)
+    if rc ~= NGX_OK then
+        local err = ffi.string(err_buf, err_len[0])
+        return nil, "failed to send: " .. err
+    end
+
+    local ok, err = coroutine._yield()
+    if not ok then
+        return nil, "failed to send: " .. err
+    end
+
+    return ok
+end
+
+
+local function stream_recv_close(self)
+    local res, err = stream_recv(self)
+    if not res then
+        return nil, err
+    end
+
+    stream_close(self)
+
+    return res
+end
+
+
+ServerStream.close = stream_close
+ServerStream.recv = stream_recv
+
+ClientStream.close = stream_close
+ClientStream.send = stream_send
+ClientStream.recv_close = stream_recv_close
 
 
 return _M

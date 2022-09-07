@@ -4,3 +4,4 @@ utils/reindex
 grpc-engine/libgrpc_engine.*
 __pycache__
 t/stress/logs
+t/backend/backend

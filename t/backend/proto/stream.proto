@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package stream;
+option go_package = "./proto";
+
+service ClientStream {
+  rpc Recv (stream RecvReq) returns (RecvResp) {}
+}
+
+message RecvReq {
+    string data = 1;
+}
+
+message RecvResp {
+    int32 count = 1;
+    string data = 2;
+}

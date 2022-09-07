@@ -95,11 +95,38 @@ callOpt:
 * `timeout`: Set the timeout value in milliseconds for the whole lifetime of
 the stream. 60000 milliseconds by default.
 
-### recv
+#### recv
 
 **syntax:** *res, err = stream:recv()*
 
 Receive a response from the stream.
+The `res` is a Lua table that is decoded from the proto message.
+
+### new_client_stream
+
+**syntax:** *stream, err = conn:new_client_stream(service, method, request, callOpt)*
+
+Create a client stream.
+The `request` is a Lua table that will be encoded according to the proto.
+The `stream` is the client stream which can be used to send/recv the data.
+
+callOpt:
+
+* `timeout`: Set the timeout value in milliseconds for the whole lifetime of
+the stream. 60000 milliseconds by default.
+
+#### send
+
+**syntax:** *ok, err = stream:send(request)*
+
+Send a request via the stream.
+The `request` is a Lua table that will be encoded according to the proto.
+
+#### recv_close
+
+**syntax:** *res, err = stream:recv_close()*
+
+Receive a response from the stream and close the stream.
 The `res` is a Lua table that is decoded from the proto message.
 
 ## Why don't we

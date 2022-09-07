@@ -13,9 +13,9 @@ import (
 )
 
 const (
-	ClientStream int = iota
-	ServerStream
-	BidirectionalStream
+	ClientStream        int = 1
+	ServerStream            = 2
+	BidirectionalStream     = 3
 )
 
 type ConnectOption struct {
@@ -76,7 +76,8 @@ func Call(c *grpc.ClientConn, method string, req []byte, opt *CallOption) ([]byt
 
 type Stream struct {
 	grpc.ClientStream
-	cancel context.CancelFunc
+	cancel     context.CancelFunc
+	streamType int
 }
 
 func NewStream(c *grpc.ClientConn, method string, req []byte, opt *CallOption, streamType int) (*Stream, error) {
@@ -119,6 +120,7 @@ func NewStream(c *grpc.ClientConn, method string, req []byte, opt *CallOption, s
 
 	s := &Stream{
 		ClientStream: cs,
+		streamType:   streamType,
 		cancel:       cancel,
 	}
 	return s, nil
@@ -126,11 +128,26 @@ func NewStream(c *grpc.ClientConn, method string, req []byte, opt *CallOption, s
 
 func (s *Stream) Recv() ([]byte, error) {
 	cs := s.ClientStream
+	if s.streamType == ClientStream {
+		// called by recv_close
+		if err := cs.CloseSend(); err != nil {
+			return nil, err
+		}
+	}
+
 	out := &bytes.Buffer{}
 	if err := cs.RecvMsg(out); err != nil {
 		return nil, err
 	}
 	return out.Bytes(), nil
+}
+
+func (s *Stream) Send(req []byte) (bool, error) {
+	cs := s.ClientStream
+	if err := cs.SendMsg(req); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (s *Stream) Close() {
