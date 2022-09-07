@@ -65,6 +65,8 @@ local ClientStream = {}
 ClientStream.__index = ClientStream
 local ServerStream = {}
 ServerStream.__index = ServerStream
+local BidirectionalStream = {}
+BidirectionalStream.__index = BidirectionalStream
 
 local protoc_inst
 local current_pb_state
@@ -74,7 +76,7 @@ local err_buf = ffi.new("char[?]", ERR_BUF_SIZE)
 local err_len = ffi.new("size_t[1]")
 local gRPCClientStreamType = 1
 local gRPCServerStreamType = 2
---local gRPCBidiretionalStreamType = 3
+local gRPCBidirectionalStreamType = 3
 
 
 function _M.load(filename)
@@ -316,8 +318,10 @@ local function new_stream(self, service, method, req, opt, stream_type)
 
     if stream_type == gRPCServerStreamType then
         return setmetatable(stream, ServerStream)
-    else
+    elseif stream_type == gRPCClientStreamType then
         return setmetatable(stream, ClientStream)
+    else
+        return setmetatable(stream, BidirectionalStream)
     end
 end
 
@@ -329,6 +333,11 @@ end
 
 function Conn:new_server_stream(service, method, req, opt)
     return new_stream(self, service, method, req, opt, gRPCServerStreamType)
+end
+
+
+function Conn:new_bidirectional_stream(service, method, req, opt)
+    return new_stream(self, service, method, req, opt, gRPCBidirectionalStreamType)
 end
 
 
@@ -425,6 +434,10 @@ ServerStream.recv = stream_recv
 ClientStream.close = stream_close
 ClientStream.send = stream_send
 ClientStream.recv_close = stream_recv_close
+
+BidirectionalStream.close = stream_close
+BidirectionalStream.send = stream_send
+BidirectionalStream.recv = stream_recv
 
 
 return _M

@@ -23,6 +23,7 @@ const (
 
 type server struct {
 	pb.UnimplementedClientStreamServer
+	pb.UnimplementedBidirectionalStreamServer
 }
 
 func (s *server) Recv(stream pb.ClientStream_RecvServer) error {
@@ -46,6 +47,29 @@ func (s *server) Recv(stream pb.ClientStream_RecvServer) error {
 	}
 }
 
+func (s *server) Echo(stream pb.BidirectionalStream_EchoServer) error {
+	log.Println("bidirectional streaming has been initiated.")
+	var count int32 = 0
+
+	for {
+		req, err := stream.Recv()
+		if err == io.EOF {
+			//TODO: support CloseSend
+			//return stream.Send(&pb.RecvResp{Data: "stream ended"})
+			return nil
+		}
+		if err != nil {
+			return status.Errorf(codes.Unavailable, "Failed to read client stream: %v", err)
+		}
+
+		count++
+
+		if err := stream.Send(&pb.RecvResp{Data: req.GetData(), Count: count}); err != nil {
+			return status.Errorf(codes.Unknown, "Failed to stream response back to client: %v", err)
+		}
+	}
+}
+
 func main() {
 	go func() {
 		lis, err := net.Listen("tcp", grpcAddr)
@@ -55,6 +79,7 @@ func main() {
 		s := grpc.NewServer()
 		reflection.Register(s)
 		pb.RegisterClientStreamServer(s, &server{})
+		pb.RegisterBidirectionalStreamServer(s, &server{})
 		if err := s.Serve(lis); err != nil {
 			log.Fatalf("failed to serve: %v", err)
 		}
