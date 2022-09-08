@@ -119,7 +119,7 @@ static void (*grpc_engine_stream_send) (void *, const char *, int);
 static void (*grpc_engine_close) (void *);
 static void (*grpc_engine_close_stream) (void *);
 static void (*grpc_engine_free) (void *);
-static void *(*grpc_engine_wait) (int *);
+static void *(*grpc_engine_wait) (int *, int);
 
 
 static ngx_rbtree_t       ngx_http_grpc_cli_ongoing_tasks;
@@ -216,7 +216,7 @@ ngx_http_grpc_cli_thread_handler(void *data, ngx_log_t *log)
 {
     ngx_http_grpc_cli_thread_ctx_t     *thctx = data;
 
-    thctx->finished_tasks = grpc_engine_wait(&thctx->finished_task_num);
+    thctx->finished_tasks = grpc_engine_wait(&thctx->finished_task_num, 5);
 }
 
 
@@ -329,8 +329,8 @@ ngx_http_grpc_cli_thread_event_handler(ngx_event_t *ev)
 {
     int                               i;
     ngx_http_grpc_cli_thread_ctx_t   *thctx;
-    ngx_thread_pool_t                 *thread_pool;
-    ngx_thread_task_t                 *task;
+    ngx_thread_pool_t                *thread_pool;
+    ngx_thread_task_t                *task;
 
     thctx = ev->data;
 
@@ -346,7 +346,9 @@ ngx_http_grpc_cli_thread_event_handler(ngx_event_t *ev)
     grpc_engine_free(thctx->finished_tasks);
     thctx->finished_tasks = NULL;
 
-    ngx_post_event(thctx->posted_ev, &ngx_posted_events);
+    if (thctx->finished_task_num > 0) {
+        ngx_post_event(thctx->posted_ev, &ngx_posted_events);
+    }
 
     if (ngx_quit || ngx_exiting) {
         return;

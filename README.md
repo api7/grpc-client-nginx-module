@@ -78,9 +78,7 @@ The `res` is a Lua table that is decoded from the proto message.
 callOpt:
 
 * `timeout`: Set the timeout value in milliseconds for the whole call.
-60000 milliseconds by default. Nginx exits only after all running tasks
-in the background thread are done, so a long timeout may block Nginx from
-exiting. (TODO: remove this limitation by setting a timeout for the background thread)
+60000 milliseconds by default.
 
 ### new_server_stream
 

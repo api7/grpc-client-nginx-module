@@ -210,8 +210,9 @@ func grpc_engine_free(ptr unsafe.Pointer) {
 }
 
 //export grpc_engine_wait
-func grpc_engine_wait(taskNum *C.int) unsafe.Pointer {
-	out, n := task.WaitFinishedTasks()
+func grpc_engine_wait(taskNum *C.int, timeoutSec C.int) unsafe.Pointer {
+	timeout := time.Duration(int(timeoutSec)) * time.Second
+	out, n := task.WaitFinishedTasks(timeout)
 	*taskNum = C.int(n)
 	return C.CBytes(out)
 }
