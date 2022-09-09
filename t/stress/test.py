@@ -54,6 +54,16 @@ def timeout(self, conn):
     res = response.read().rstrip().decode()
     self.assertEqual(res, "failed to call: timeout")
 
+def echo(self, conn):
+    conn.request("GET", "/echo?data=k")
+    response = conn.getresponse()
+    self.assertEqual(response.status, 200)
+    res = response.read().rstrip().decode()
+    self.assertEqual(res, "k")
+    # give a bit randomness
+    time.sleep(random.uniform(0, 0.01))
+
+
 def run_in_thread(self, f):
     def _f():
         for i in range(CALL_PER_THREAD):
@@ -146,6 +156,9 @@ class StressTest(unittest.TestCase):
         w_th.join()
         for t in th:
             t.join()
+
+    def test_bidirectional_stream(self):
+        bombard(self, echo)
 
 
 if __name__ == '__main__':
