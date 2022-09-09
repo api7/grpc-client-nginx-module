@@ -4,6 +4,7 @@ import "C"
 import (
 	"encoding/binary"
 	"sync"
+	"time"
 	"unsafe"
 )
 
@@ -32,6 +33,8 @@ func init() {
 type taskQueue struct {
 	cond *sync.Cond
 
+	done bool
+
 	taskIdBuf []byte
 	tasks     []byte
 }
@@ -46,12 +49,26 @@ func NewTaskQueue() *taskQueue {
 	}
 }
 
-func (self *taskQueue) Wait() ([]byte, int) {
+func (self *taskQueue) signal() {
+	self.done = true
+	self.cond.Signal()
+}
+
+func (self *taskQueue) Wait(timeout time.Duration) ([]byte, int) {
+	timer := time.AfterFunc(timeout, func() {
+		self.cond.L.Lock()
+		self.signal()
+		self.cond.L.Unlock()
+	})
+
 	self.cond.L.Lock()
 
-	for len(self.tasks) == 0 {
+	for !self.done {
 		self.cond.Wait()
 	}
+
+	self.done = false
+	timer.Stop()
 
 	out := self.tasks
 	self.tasks = []byte{}
@@ -81,8 +98,10 @@ func (self *taskQueue) Done(id uint64, result []byte, err error) {
 	hostEndian.PutUint64(self.taskIdBuf, id)
 	hostEndian.PutUint64(self.taskIdBuf[8:16], size)
 	hostEndian.PutUint64(self.taskIdBuf[16:], uint64(ptrRes))
+
 	self.tasks = append(self.tasks, self.taskIdBuf...)
-	self.cond.Signal()
+
+	self.signal()
 	self.cond.L.Unlock()
 }
 
@@ -90,8 +109,8 @@ var (
 	finishedTaskQueue = NewTaskQueue()
 )
 
-func WaitFinishedTasks() ([]byte, int) {
-	return finishedTaskQueue.Wait()
+func WaitFinishedTasks(timeout time.Duration) ([]byte, int) {
+	return finishedTaskQueue.Wait(timeout)
 }
 
 func ReportFinishedTask(id uint64, result []byte, err error) {
