@@ -31,6 +31,9 @@ services:
   backend:
     image: grpc-client-nginx-module-test-backend:latest
     restart: unless-stopped
-    build: ./t/backend
+    build:
+      context: ./t/backend
+      args:
+        ENABLE_PROXY: ${ENABLE_PROXY}
     ports:
       - "50051:50051"
