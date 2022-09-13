@@ -1,6 +1,6 @@
 # gRPC-client-nginx-module
 
-This module is still WIP.
+This module is experimental.
 
 ## Install
 
