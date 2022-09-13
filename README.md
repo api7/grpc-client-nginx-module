@@ -13,9 +13,7 @@ First of all, build this module into your OpenResty:
             --add-module=/path/to/grpc-client-nginx-module
 ```
 
-We need to specify the path of engine via build argument "-DNGX_HTTP_GRPC_CLI_ENGINE_PATH"
-or via runtime configuration "grpc_client_engine_path" like:
-`grpc_client_engine_path /path/to/libgrpc_engine.so`.
+We need to specify the path of engine via build argument "-DNGX_HTTP_GRPC_CLI_ENGINE_PATH".
 
 Then, compile the gRPC engine:
 

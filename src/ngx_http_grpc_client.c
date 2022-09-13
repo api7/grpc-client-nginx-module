@@ -110,7 +110,6 @@ static ngx_int_t ngx_http_grpc_cli_init_worker(ngx_cycle_t *cycle);
 static void ngx_http_grpc_cli_exit_worker(ngx_cycle_t *cycle);
 
 static void *ngx_http_grpc_cli_create_main_conf(ngx_conf_t *cf);
-static char *ngx_http_grpc_cli_engine_path(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
 static void *(*grpc_engine_connect) (unsigned char *, size_t *, const char *, int,
                                      void *);
@@ -136,18 +135,6 @@ static int                ngx_http_grpc_cli_ongoing_tasks_num;
 static ngx_str_t thread_pool_name = ngx_string("grpc-client-nginx-module");
 static ngx_str_t engine_path = ngx_string(STRINGIFY(NGX_HTTP_GRPC_CLI_ENGINE_PATH));
 
-static ngx_command_t ngx_http_grpc_cli_cmds[] = {
-    { ngx_string("grpc_client_engine_path"),
-      NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE1,
-      ngx_http_grpc_cli_engine_path,
-      NGX_HTTP_MAIN_CONF_OFFSET,
-      0,
-      NULL },
-
-    ngx_null_command
-};
-
-
 static ngx_http_module_t ngx_http_grpc_cli_module_ctx = {
     NULL,                                    /* preconfiguration */
     NULL,                                    /* postconfiguration */
@@ -166,7 +153,7 @@ static ngx_http_module_t ngx_http_grpc_cli_module_ctx = {
 ngx_module_t ngx_http_grpc_client_module = {
     NGX_MODULE_V1,
     &ngx_http_grpc_cli_module_ctx,       /* module context */
-    ngx_http_grpc_cli_cmds,              /* module directives */
+    NULL,                                /* module directives */
     NGX_HTTP_MODULE,                     /* module type */
     NULL,                                /* init master */
     NULL,                                /* init module */
@@ -177,28 +164,6 @@ ngx_module_t ngx_http_grpc_client_module = {
     ngx_http_grpc_cli_exit_worker,       /* exit master */
     NGX_MODULE_V1_PADDING
 };
-
-
-static char *
-ngx_http_grpc_cli_engine_path(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
-{
-    ngx_http_grpc_cli_main_conf_t *gccf = conf;
-
-    ngx_str_t                         *value;
-
-    value = cf->args->elts;
-
-    gccf->engine_path.data = ngx_palloc(cf->pool, value[1].len + 1);
-    if (gccf->engine_path.data == NULL) {
-        return "no memory";
-    }
-
-    gccf->engine_path.len = value[1].len + 1;
-    ngx_memcpy(gccf->engine_path.data, value[1].data, value[1].len);
-    gccf->engine_path.data[value[1].len] = '\0';
-
-    return NGX_CONF_OK;
-}
 
 
 static void *
