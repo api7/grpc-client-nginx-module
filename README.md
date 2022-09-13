@@ -9,8 +9,13 @@ First of all, build this module into your OpenResty:
 ```shell
 ./configure ... \
             --with-threads \
+            --with-cc-opt="-DNGX_HTTP_GRPC_CLI_ENGINE_PATH=/path/to/libgrpc_engine.so" \
             --add-module=/path/to/grpc-client-nginx-module
 ```
+
+We need to specify the path of engine via build argument "-DNGX_HTTP_GRPC_CLI_ENGINE_PATH"
+or via runtime configuration "grpc_client_engine_path" like:
+`grpc_client_engine_path /path/to/libgrpc_engine.so`.
 
 Then, compile the gRPC engine:
 
@@ -22,13 +27,12 @@ After that, install the Lua rock:
 
 luarocks install grpc-client-nginx-module
 
-Finally, setup the thread pool and load the shared library:
+Finally, setup the thread pool:
 
 ```nginx
 # Only one background thread is used to communicate with the gRPC engine
 thread_pool grpc-client-nginx-module threads=1;
 http {
-    grpc_client_engine_path /path/to/libgrpc_engine.so;
     ...
 }
 ```

@@ -5,6 +5,12 @@
 #include <ngx_http_lua_util.h>
 
 
+#ifndef NGX_HTTP_GRPC_CLI_ENGINE_PATH
+#define NGX_HTTP_GRPC_CLI_ENGINE_PATH "./grpc-engine/libgrpc_engine.so"
+#endif
+#define STRINGIFY2(x) #x
+#define STRINGIFY(x) STRINGIFY2(x)
+
 #define NGX_HTTP_GRPC_CLIENT_STATE_OK         0
 #define NGX_HTTP_GRPC_CLIENT_STATE_TIMEOUT    1
 
@@ -128,6 +134,7 @@ static ngx_rbtree_node_t  ngx_http_grpc_cli_ongoing_task_sentinel;
 static int                ngx_http_grpc_cli_ongoing_tasks_num;
 
 static ngx_str_t thread_pool_name = ngx_string("grpc-client-nginx-module");
+static ngx_str_t engine_path = ngx_string(STRINGIFY(NGX_HTTP_GRPC_CLI_ENGINE_PATH));
 
 static ngx_command_t ngx_http_grpc_cli_cmds[] = {
     { ngx_string("grpc_client_engine_path"),
@@ -179,10 +186,6 @@ ngx_http_grpc_cli_engine_path(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     ngx_str_t                         *value;
 
-    if (gccf->engine_path.data != NULL) {
-        return "is duplicate";
-    }
-
     value = cf->args->elts;
 
     gccf->engine_path.data = ngx_palloc(cf->pool, value[1].len + 1);
@@ -207,6 +210,8 @@ ngx_http_grpc_cli_create_main_conf(ngx_conf_t *cf)
     if (conf == NULL) {
         return NULL;
     }
+
+    conf->engine_path = engine_path;
 
     return conf;
 }
