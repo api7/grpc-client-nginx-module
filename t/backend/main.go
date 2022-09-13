@@ -54,12 +54,10 @@ func (s *server) Echo(stream pb.BidirectionalStream_EchoServer) error {
 	for {
 		req, err := stream.Recv()
 		if err == io.EOF {
-			//TODO: support CloseSend
-			//return stream.Send(&pb.RecvResp{Data: "stream ended"})
 			return nil
 		}
 		if err != nil {
-			return status.Errorf(codes.Unavailable, "Failed to read client stream: %v", err)
+			return status.Errorf(codes.Unavailable, "Failed to read stream: %v", err)
 		}
 
 		count++
@@ -67,6 +65,26 @@ func (s *server) Echo(stream pb.BidirectionalStream_EchoServer) error {
 		if err := stream.Send(&pb.RecvResp{Data: req.GetData(), Count: count}); err != nil {
 			return status.Errorf(codes.Unknown, "Failed to stream response back to client: %v", err)
 		}
+	}
+}
+
+func (s *server) EchoSum(stream pb.BidirectionalStream_EchoSumServer) error {
+	log.Println("bidirectional streaming has been initiated.")
+	var count int32 = 0
+	totalData := ""
+
+	for {
+		req, err := stream.Recv()
+		if err == io.EOF {
+			return stream.Send(&pb.RecvResp{Count: count, Data: totalData})
+		}
+		if err != nil {
+			return status.Errorf(codes.Unavailable, "Failed to read stream: %v", err)
+		}
+
+		data := req.GetData()
+		totalData += data
+		count++
 	}
 }
 

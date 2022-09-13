@@ -96,3 +96,35 @@ location /t {
 a
 14
 1234
+
+
+
+=== TEST 4: send & close_send & recv
+--- config
+location /t {
+    content_by_lua_block {
+        local gcli = require("resty.grpc")
+        assert(gcli.load("t/backend/proto/stream.proto"))
+
+        local conn = assert(gcli.connect("127.0.0.1:50051"))
+        local st, err = conn:new_bidirectional_stream("stream.BidirectionalStream", "EchoSum", {data = "a"})
+        if not st then
+            ngx.say(err)
+            return
+        end
+        for i = 1, 4 do
+            assert(st:send({data = tostring(i)}))
+        end
+        assert(st:close_send())
+        local data, err = st:recv()
+        if not data then
+            ngx.say(err)
+            return
+        end
+        ngx.say(data.count)
+        ngx.say(data.data)
+    }
+}
+--- response_body
+5
+a1234

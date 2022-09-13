@@ -9,6 +9,7 @@ service ClientStream {
 
 service BidirectionalStream {
   rpc Echo (stream RecvReq) returns (stream RecvResp) {}
+  rpc EchoSum (stream RecvReq) returns (stream RecvResp) {}
 }
 
 message RecvReq {

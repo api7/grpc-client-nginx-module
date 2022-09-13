@@ -143,6 +143,12 @@ the stream. 60000 milliseconds by default.
 The bidirectional stream has `send` and `recv`, which are equal to the corresponding
 version in client/server streams.
 
+#### close_send
+
+**syntax:** *ok, err = stream:close_send()*
+
+Close the send side of the bidirectional stream.
+
 ## Why don't we
 
 ### Why don't we use the gRPC code in Nginx

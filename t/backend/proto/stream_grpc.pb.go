@@ -139,6 +139,7 @@ var ClientStream_ServiceDesc = grpc.ServiceDesc{
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type BidirectionalStreamClient interface {
 	Echo(ctx context.Context, opts ...grpc.CallOption) (BidirectionalStream_EchoClient, error)
+	EchoSum(ctx context.Context, opts ...grpc.CallOption) (BidirectionalStream_EchoSumClient, error)
 }
 
 type bidirectionalStreamClient struct {
@@ -180,11 +181,43 @@ func (x *bidirectionalStreamEchoClient) Recv() (*RecvResp, error) {
 	return m, nil
 }
 
+func (c *bidirectionalStreamClient) EchoSum(ctx context.Context, opts ...grpc.CallOption) (BidirectionalStream_EchoSumClient, error) {
+	stream, err := c.cc.NewStream(ctx, &BidirectionalStream_ServiceDesc.Streams[1], "/stream.BidirectionalStream/EchoSum", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &bidirectionalStreamEchoSumClient{stream}
+	return x, nil
+}
+
+type BidirectionalStream_EchoSumClient interface {
+	Send(*RecvReq) error
+	Recv() (*RecvResp, error)
+	grpc.ClientStream
+}
+
+type bidirectionalStreamEchoSumClient struct {
+	grpc.ClientStream
+}
+
+func (x *bidirectionalStreamEchoSumClient) Send(m *RecvReq) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *bidirectionalStreamEchoSumClient) Recv() (*RecvResp, error) {
+	m := new(RecvResp)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // BidirectionalStreamServer is the server API for BidirectionalStream service.
 // All implementations must embed UnimplementedBidirectionalStreamServer
 // for forward compatibility
 type BidirectionalStreamServer interface {
 	Echo(BidirectionalStream_EchoServer) error
+	EchoSum(BidirectionalStream_EchoSumServer) error
 	mustEmbedUnimplementedBidirectionalStreamServer()
 }
 
@@ -194,6 +227,9 @@ type UnimplementedBidirectionalStreamServer struct {
 
 func (UnimplementedBidirectionalStreamServer) Echo(BidirectionalStream_EchoServer) error {
 	return status.Errorf(codes.Unimplemented, "method Echo not implemented")
+}
+func (UnimplementedBidirectionalStreamServer) EchoSum(BidirectionalStream_EchoSumServer) error {
+	return status.Errorf(codes.Unimplemented, "method EchoSum not implemented")
 }
 func (UnimplementedBidirectionalStreamServer) mustEmbedUnimplementedBidirectionalStreamServer() {}
 
@@ -234,6 +270,32 @@ func (x *bidirectionalStreamEchoServer) Recv() (*RecvReq, error) {
 	return m, nil
 }
 
+func _BidirectionalStream_EchoSum_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(BidirectionalStreamServer).EchoSum(&bidirectionalStreamEchoSumServer{stream})
+}
+
+type BidirectionalStream_EchoSumServer interface {
+	Send(*RecvResp) error
+	Recv() (*RecvReq, error)
+	grpc.ServerStream
+}
+
+type bidirectionalStreamEchoSumServer struct {
+	grpc.ServerStream
+}
+
+func (x *bidirectionalStreamEchoSumServer) Send(m *RecvResp) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *bidirectionalStreamEchoSumServer) Recv() (*RecvReq, error) {
+	m := new(RecvReq)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // BidirectionalStream_ServiceDesc is the grpc.ServiceDesc for BidirectionalStream service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -245,6 +307,12 @@ var BidirectionalStream_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "Echo",
 			Handler:       _BidirectionalStream_Echo_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+		{
+			StreamName:    "EchoSum",
+			Handler:       _BidirectionalStream_EchoSum_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},

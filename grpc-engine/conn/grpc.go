@@ -150,6 +150,14 @@ func (s *Stream) Send(req []byte) (bool, error) {
 	return true, nil
 }
 
+func (s *Stream) CloseSend() (bool, error) {
+	cs := s.ClientStream
+	if err := cs.CloseSend(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func (s *Stream) Close() {
 	if s.cancel != nil {
 		s.cancel()

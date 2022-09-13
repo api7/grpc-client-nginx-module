@@ -195,12 +195,17 @@ func grpc_engine_stream_send(sctx unsafe.Pointer, reqData unsafe.Pointer, reqLen
 
 	go func() {
 		_, err := s.Send(req)
-		if err != nil {
-			task.ReportFinishedTask(uint64(uintptr(sctx)), nil, err)
-			return
-		}
+		task.ReportFinishedTask(uint64(uintptr(sctx)), nil, err)
+	}()
+}
 
-		task.ReportFinishedTask(uint64(uintptr(sctx)), nil, nil)
+//export grpc_engine_stream_close_send
+func grpc_engine_stream_close_send(sctx unsafe.Pointer) {
+	s := mustFind(&StreamRef, sctx).(*conn.Stream)
+
+	go func() {
+		_, err := s.CloseSend()
+		task.ReportFinishedTask(uint64(uintptr(sctx)), nil, err)
 	}()
 }
 
