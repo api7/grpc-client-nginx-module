@@ -31,7 +31,6 @@ add_block_preprocessor(sub {
 
         my $http_config = $block->http_config // '';
         $http_config .= <<_EOC_;
-        grpc_client_engine_path ./grpc-engine/libgrpc_engine.so;
         lua_package_path "lib/?.lua;;";
 _EOC_
 
