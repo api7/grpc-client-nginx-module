@@ -36,7 +36,7 @@ jobs:
           wget https://raw.githubusercontent.com/api7/apisix-build-tools/master/build-apisix-base.sh
           chmod +x build-apisix-base.sh
           OR_PREFIX=$OPENRESTY_PREFIX CC="clang -fsanitize=address -fcolor-diagnostics -Qunused-arguments" \
-            cc_opt="-Werror -DNGX_HTTP_GRPC_CLI_ENGINE_PATH=$PWD/grpc-engine/libgrpc_engine.so" \
+            cc_opt="-Werror" \
             ./build-apisix-base.sh latest
           sudo luarocks make ./grpc-client-nginx-module-dev-0-0.rockspec
           cd ./grpc-engine && go build -o libgrpc_engine.so -buildmode=c-shared main.go

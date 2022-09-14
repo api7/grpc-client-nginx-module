@@ -6,7 +6,7 @@
 
 
 #ifndef NGX_HTTP_GRPC_CLI_ENGINE_PATH
-#define NGX_HTTP_GRPC_CLI_ENGINE_PATH "./grpc-engine/libgrpc_engine.so"
+#define NGX_HTTP_GRPC_CLI_ENGINE_PATH ""
 #endif
 #define STRINGIFY2(x) #x
 #define STRINGIFY(x) STRINGIFY2(x)
@@ -552,11 +552,6 @@ ngx_http_grpc_cli_thread(ngx_http_grpc_cli_main_conf_t *gccf, ngx_cycle_t *cycle
     ngx_http_grpc_cli_thread_ctx_t     *thctx;
 
     thread_pool = ngx_thread_pool_get(cycle, &thread_pool_name);
-    if (thread_pool == NULL) {
-        ngx_log_error(NGX_LOG_EMERG, cycle->log, 0,
-                      "failed to init engine: missing thread pool %V", &thread_pool_name);
-        return NGX_ERROR;
-    }
 
     task = ngx_thread_task_alloc(cycle->pool,
                                  sizeof(ngx_http_grpc_cli_thread_ctx_t));
@@ -600,7 +595,11 @@ ngx_http_grpc_cli_init_worker(ngx_cycle_t *cycle)
         return NGX_OK;
     }
 
-    if (gccf->engine_path.data == NULL) {
+    if (gccf->engine_path.len == 0) {
+        return NGX_OK;
+    }
+
+    if (ngx_thread_pool_get(cycle, &thread_pool_name) == NULL) {
         return NGX_OK;
     }
 
