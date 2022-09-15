@@ -4,7 +4,7 @@
 if [ $USE_THREADS != YES ]; then
     cat << END
 
-$0: lua_io_nginx_module depends on the threads support, please reconfigure with "--with-threads" option.
+$0: grpc-client-nginx-module depends on the threads support, please reconfigure with "--with-threads" option.
 
 END
     exit 1
@@ -40,3 +40,6 @@ ngx_module_incs=" \
 . auto/module
 
 ngx_addon_name=$ngx_module_name
+
+# After loading Go code from .so, the signalfd doesn't work anymore
+sed -i "s/#ifndef NGX_HTTP_LUA_HAVE_SIGNALFD/#ifdef NGX_HTTP_LUA_HAVE_SIGNALFD/" $NGX_AUTO_CONFIG_H
