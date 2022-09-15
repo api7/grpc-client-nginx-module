@@ -38,7 +38,8 @@ func init() {
 	// only keep the latest debug log
 	f, err := os.OpenFile("/tmp/grpc-engine-debug.log", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
-		panic(err)
+		log.Printf(err.Error())
+		return
 	}
 	log.Default().SetOutput(f)
 	log.Default().SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.Lshortfile)
