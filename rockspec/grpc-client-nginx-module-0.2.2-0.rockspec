@@ -1,8 +1,8 @@
 package = "grpc-client-nginx-module"
-version = "0.2.1-0"
+version = "0.2.2-0"
 source = {
     url = "git://github.com/api7/grpc-client-nginx-module",
-    branch = "v0.2.1",
+    branch = "v0.2.2",
 }
 
 description = {
