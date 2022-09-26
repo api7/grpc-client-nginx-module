@@ -101,7 +101,6 @@ typedef struct {
                       "failed to resolve symbol: %s", err); \
         return NGX_ERROR; \
     }
-#define ERR_BUF_LEN 512
 
 
 extern ngx_module_t  ngx_http_grpc_client_module;
@@ -752,13 +751,6 @@ ngx_http_grpc_cli_close(ngx_http_grpc_cli_ctx_t *ctx, ngx_http_request_t *r)
     }
 
     ngx_http_grpc_cli_free_conn(ctx, log);
-}
-
-
-void
-ngx_http_grpc_cli_free(void *data)
-{
-    grpc_engine_free(data);
 }
 
 
