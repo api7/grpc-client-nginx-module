@@ -5,6 +5,8 @@ local get_request = base.get_request
 local ffi = require("ffi")
 local C = ffi.C
 local NGX_OK = ngx.OK
+local subsystem = ngx.config.subsystem
+local is_http = subsystem == "http"
 
 
 ffi.cdef[[
@@ -19,41 +21,48 @@ typedef struct {
 } CallOpt;
 
 int
-ngx_http_grpc_cli_is_engine_inited(void);
+ngx_grpc_cli_is_engine_inited(void);
 void *
-ngx_http_grpc_cli_connect(unsigned char *err_buf, size_t *err_len,
-                          ngx_http_request_t *r,
-                          const char *target_data, int target_len,
-                          void *opt);
+ngx_grpc_cli_connect(unsigned char *err_buf, size_t *err_len,
+                     void *r, bool is_http,
+                     const char *target_data, int target_len,
+                     void *opt);
 void
-ngx_http_grpc_cli_close(void *ctx, ngx_http_request_t *r);
+ngx_grpc_cli_close(void *ctx, void *r, bool is_http);
+
+int
+ngx_grpc_cli_call(unsigned char *err_buf, size_t *err_len,
+                  void *r, bool is_http,
+                  void *ctx,
+                  const char *method_data, int method_len,
+                  const char *req_data, int req_len,
+                  void *opt);
+
 void *
-ngx_http_grpc_cli_new_stream(unsigned char *err_buf, size_t *err_len,
-                             ngx_http_request_t *r, void *ctx,
-                             const char *method_data, int method_len,
-                             const char *req_data, int req_len,
-                             void *opt, int type);
+ngx_grpc_cli_new_stream(unsigned char *err_buf, size_t *err_len,
+                        void *r, bool is_http,
+                        void *ctx,
+                        const char *method_data, int method_len,
+                        const char *req_data, int req_len,
+                        void *opt, int type);
 void
-ngx_http_grpc_cli_close_stream(void *ctx, ngx_http_request_t *r);
+ngx_grpc_cli_close_stream(void *ctx, void *r, bool is_http);
 int
-ngx_http_grpc_cli_stream_recv(unsigned char *err_buf, size_t *err_len,
-                              ngx_http_request_t *r, void *ctx, void *opt);
+ngx_grpc_cli_stream_recv(unsigned char *err_buf, size_t *err_len,
+                         void *r, bool is_http,
+                         void *ctx, void *opt);
 int
-ngx_http_grpc_cli_stream_send(unsigned char *err_buf, size_t *err_len,
-                              ngx_http_request_t *r, void *ctx, void *opt,
-                              const char *req_data, int req_len);
+ngx_grpc_cli_stream_send(unsigned char *err_buf, size_t *err_len,
+                         void *r, bool is_http,
+                         void *ctx, void *opt,
+                         const char *req_data, int req_len);
 int
-ngx_http_grpc_cli_stream_close_send(unsigned char *err_buf, size_t *err_len,
-                                    ngx_http_request_t *r, void *ctx, void *opt);
-int
-ngx_http_grpc_cli_call(unsigned char *err_buf, size_t *err_len,
-                       ngx_http_request_t *r, void *ctx,
-                       const char *method_data, int method_len,
-                       const char *req_data, int req_len,
-                       void *opt);
+ngx_grpc_cli_stream_close_send(unsigned char *err_buf, size_t *err_len,
+                               void *r, bool is_http,
+                               void *ctx, void *opt);
 ]]
 
-if C.ngx_http_grpc_cli_is_engine_inited() == 0 then
+if C.ngx_grpc_cli_is_engine_inited() == 0 then
     error("The gRPC client engine is not initialized. " ..
           "Need to configure 'grpc_client_engine_path' in the nginx.conf. " ..
           "And this library can not be loaded in the init phase."
@@ -113,7 +122,7 @@ end
 
 
 local function ctx_gc_handler(ctx)
-    C.ngx_http_grpc_cli_close(ctx, nil)
+    C.ngx_grpc_cli_close(ctx, nil, is_http)
 end
 
 
@@ -142,7 +151,9 @@ function _M.connect(target, opt)
 
     err_len[0] = ERR_BUF_SIZE
     -- grpc-go dials the target in non-blocking way
-    local ctx = C.ngx_http_grpc_cli_connect(err_buf, err_len, r, target, #target, opt_buf)
+    local ctx = C.ngx_grpc_cli_connect(err_buf, err_len,
+                                       r, is_http,
+                                       target, #target, opt_buf)
     if ctx == nil then
         local err = ffi.string(err_buf, err_len[0])
         return nil, err
@@ -162,7 +173,7 @@ function Conn:close()
     local r = get_request()
     local ctx = self.ctx
     self.ctx = nil
-    C.ngx_http_grpc_cli_close(ctx, r)
+    C.ngx_grpc_cli_close(ctx, r, is_http)
 end
 
 
@@ -184,8 +195,8 @@ local function call_with_pb_state(r, ctx, m, path, req, opt)
     end
 
     err_len[0] = ERR_BUF_SIZE
-    local rc = C.ngx_http_grpc_cli_call(err_buf, err_len, r, ctx, path, #path, encoded, #encoded,
-                                        opt_buf)
+    local rc = C.ngx_grpc_cli_call(err_buf, err_len, r, is_http,
+                                   ctx, path, #path, encoded, #encoded, opt_buf)
     if rc ~= NGX_OK then
         local err = ffi.string(err_buf, err_len[0])
         return nil, "failed to call: " .. err
@@ -245,7 +256,7 @@ end
 
 
 local function stream_gc_handler(ctx)
-    C.ngx_http_grpc_cli_close_stream(ctx, nil)
+    C.ngx_grpc_cli_close_stream(ctx, nil, is_http)
 end
 
 
@@ -298,9 +309,10 @@ local function new_stream(self, service, method, req, opt, stream_type)
     end
 
     err_len[0] = ERR_BUF_SIZE
-    local stream_ctx = C.ngx_http_grpc_cli_new_stream(err_buf, err_len, r, ctx, path, #path,
-                                                      encoded, #encoded,
-                                                      opt_buf, stream_type)
+    local stream_ctx = C.ngx_grpc_cli_new_stream(err_buf, err_len, r, is_http,
+                                                 ctx, path, #path,
+                                                 encoded, #encoded,
+                                                 opt_buf, stream_type)
     if stream_ctx == nil then
         local err = ffi.string(err_buf, err_len[0])
         return nil, "failed to new stream: " .. err
@@ -352,7 +364,7 @@ local function stream_close(self)
     local r = get_request()
     local ctx = self.ctx
     self.ctx = nil
-    C.ngx_http_grpc_cli_close_stream(ctx, r)
+    C.ngx_grpc_cli_close_stream(ctx, r, is_http)
 end
 
 
@@ -365,13 +377,14 @@ local function stream_recv(self)
     local r = get_request()
 
     err_len[0] = ERR_BUF_SIZE
-    local rc = C.ngx_http_grpc_cli_stream_recv(err_buf, err_len, r, ctx, self.opt_buf)
+    local rc = C.ngx_grpc_cli_stream_recv(err_buf, err_len, r, is_http, ctx, self.opt_buf)
     if rc ~= NGX_OK then
         local err = ffi.string(err_buf, err_len[0])
         return nil, "failed to recv: " .. err
     end
 
     local ok, resp_or_err = coroutine._yield()
+    ngx.log(ngx.EMERG, ok, " ", resp_or_err)
     if not ok then
         return nil, "failed to recv: " .. resp_or_err
     end
@@ -403,8 +416,8 @@ local function stream_send(self, req)
     pb.state(nil)
 
     err_len[0] = ERR_BUF_SIZE
-    local rc = C.ngx_http_grpc_cli_stream_send(err_buf, err_len, r, ctx, self.opt_buf,
-                                               encoded, #encoded)
+    local rc = C.ngx_grpc_cli_stream_send(err_buf, err_len, r, is_http, ctx, self.opt_buf,
+                                          encoded, #encoded)
     if rc ~= NGX_OK then
         local err = ffi.string(err_buf, err_len[0])
         return nil, "failed to send: " .. err
@@ -428,7 +441,8 @@ local function stream_close_send(self, req)
     local r = get_request()
 
     err_len[0] = ERR_BUF_SIZE
-    local rc = C.ngx_http_grpc_cli_stream_close_send(err_buf, err_len, r, ctx, self.opt_buf)
+    local rc = C.ngx_grpc_cli_stream_close_send(err_buf, err_len, r, is_http,
+                                                ctx, self.opt_buf)
     if rc ~= NGX_OK then
         local err = ffi.string(err_buf, err_len[0])
         return nil, "failed to close send: " .. err

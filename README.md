@@ -9,11 +9,11 @@ First of all, build this module into your OpenResty:
 ```shell
 ./configure ... \
             --with-threads \
-            --with-cc-opt="-DNGX_HTTP_GRPC_CLI_ENGINE_PATH=/path/to/libgrpc_engine.so" \
+            --with-cc-opt="-DNGX_GRPC_CLI_ENGINE_PATH=/path/to/libgrpc_engine.so" \
             --add-module=/path/to/grpc-client-nginx-module
 ```
 
-We need to specify the path of engine via build argument "-DNGX_HTTP_GRPC_CLI_ENGINE_PATH".
+We need to specify the path of engine via build argument "-DNGX_GRPC_CLI_ENGINE_PATH".
 
 Then, compile the gRPC engine:
 
@@ -25,12 +25,17 @@ After that, install the Lua rock:
 
 luarocks install grpc-client-nginx-module
 
+Make sure the Lua rock version matches the tag version of the Nginx module.
+
 Finally, setup the thread pool:
 
 ```nginx
 # Only one background thread is used to communicate with the gRPC engine
 thread_pool grpc-client-nginx-module threads=1;
 http {
+    ...
+}
+stream {
     ...
 }
 ```
@@ -47,6 +52,20 @@ access_by_lua_block {
     -- send unary request
     local res = assert(conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'v'}))
 }
+```
+
+This module can be run in stream subsystem too:
+
+```lua
+preread_by_lua_block {
+    local gcli = require("resty.grpc")
+    assert(gcli.load("t/testdata/rpc.proto"))
+
+    local conn = assert(gcli.connect("127.0.0.1:2379"))
+    local res = conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'v'})
+    conn:close()
+}
+return '';
 ```
 
 ## Method

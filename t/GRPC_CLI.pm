@@ -24,6 +24,22 @@ add_block_preprocessor(sub {
         $block->set_value("no_shutdown_error_log", "LeakSanitizer");
     }
 
+    if (defined $block->stream_server_config) {
+        my $stream_config = $block->stream_config // '';
+        $stream_config .= <<_EOC_;
+        lua_package_path "lib/?.lua;;";
+_EOC_
+
+        $block->set_value("stream_config", $stream_config);
+
+        my $main_config = $block->main_config // '';
+        $main_config .= <<_EOC_;
+        thread_pool grpc-client-nginx-module threads=1;
+_EOC_
+
+        $block->set_value("main_config", $main_config);
+    }
+
     if (defined $block->config) {
         if (!$block->request) {
             $block->set_value("request", "GET /t");
