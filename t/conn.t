@@ -103,4 +103,4 @@ location /t {
     }
 }
 --- response_body
-failed to call: rpc error: code = ResourceExhausted desc = grpc: received message larger than max (29 vs. 5)
+failed to call: rpc error: code = ResourceExhausted desc = grpc: received message larger than max (28 vs. 5)
