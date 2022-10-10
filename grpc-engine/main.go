@@ -9,7 +9,7 @@ package main
 typedef struct DialOpt {
     bool insecure;
     bool tls_verify;
-	int max_recv_msg_size;
+    int max_recv_msg_size;
 } DialOpt;
 
 typedef uintptr_t ngx_msec_t;

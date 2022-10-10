@@ -87,7 +87,7 @@ ok
 
 
 
-=== TEST 5: call recv max size, exceed
+=== TEST 6: call recv max size, exceed
 --- config
 location /t {
     content_by_lua_block {

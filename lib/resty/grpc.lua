@@ -152,7 +152,7 @@ function _M.connect(target, opt)
         if opt.max_recv_msg_size > MAX_INIT32 then
             opt_ptr.max_recv_msg_size = MAX_INIT32
         else
-            opt_ptr.max_recv_msg_size = opt_ptr.max_recv_msg_size
+            opt_ptr.max_recv_msg_size = opt.max_recv_msg_size
         end
     else
         opt_ptr.max_recv_msg_size = 0
