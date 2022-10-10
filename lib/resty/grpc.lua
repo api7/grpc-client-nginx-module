@@ -8,11 +8,13 @@ local NGX_OK = ngx.OK
 local subsystem = ngx.config.subsystem
 local is_http = subsystem == "http"
 
+local MAX_INIT32 = 2147483647
 
 ffi.cdef[[
 typedef struct {
     bool insecure;
     bool tls_verify;
+    int max_recv_msg_size;
 } DialOpt;
 
 typedef uintptr_t ngx_msec_t;
@@ -144,6 +146,16 @@ function _M.connect(target, opt)
         opt_ptr.tls_verify = false
     else
         opt_ptr.tls_verify = true
+    end
+
+    if opt.max_recv_msg_size then
+        if opt.max_recv_msg_size > MAX_INIT32 then
+            opt_ptr.max_recv_msg_size = MAX_INIT32
+        else
+            opt_ptr.max_recv_msg_size = opt.max_recv_msg_size
+        end
+    else
+        opt_ptr.max_recv_msg_size = 0
     end
 
     local conn = {}
