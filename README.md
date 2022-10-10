@@ -86,8 +86,8 @@ connectOpt:
 
 * `insecure`: whether connecting the target in an insecure(plaintext) way.
 True by default. Set it to false will use TLS connection.
-* `tls_verify`: whether to verify the server's TLS certificate
-
+* `tls_verify`: whether to verify the server's TLS certificate.
+* `max_recv_msg_size`: sets the maximum message size in bytes the client can receive.
 ### call
 
 **syntax:** *res, err = conn:call(service, method, request, callOpt)*
