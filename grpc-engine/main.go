@@ -9,6 +9,7 @@ package main
 typedef struct DialOpt {
     bool insecure;
     bool tls_verify;
+	int max_recv_msg_size;
 } DialOpt;
 
 typedef uintptr_t ngx_msec_t;
@@ -83,8 +84,9 @@ func grpc_engine_connect(errBuf unsafe.Pointer, errLen *C.size_t,
 	target := string(C.GoBytes(targetData, targetLen))
 
 	co := &conn.ConnectOption{
-		Insecure:  bool(opt.insecure),
-		TLSVerify: bool(opt.tls_verify),
+		Insecure:       bool(opt.insecure),
+		TLSVerify:      bool(opt.tls_verify),
+		MaxRecvMsgSize: int(opt.max_recv_msg_size),
 	}
 	c, err := conn.Connect(target, co)
 	if err != nil {

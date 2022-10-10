@@ -19,8 +19,9 @@ const (
 )
 
 type ConnectOption struct {
-	Insecure  bool
-	TLSVerify bool
+	Insecure       bool
+	TLSVerify      bool
+	MaxRecvMsgSize int
 }
 
 type CallOption struct {
@@ -43,6 +44,10 @@ func Connect(target string, opt *ConnectOption) (*grpc.ClientConn, error) {
 		}
 
 		opts = append(opts, grpc.WithTransportCredentials(credentials.NewTLS(tc)))
+	}
+
+	if opt.MaxRecvMsgSize != 0 {
+		opts = append(opts, grpc.WithMaxMsgSize(opt.MaxRecvMsgSize))
 	}
 
 	conn, err := grpc.Dial(target, opts...)
