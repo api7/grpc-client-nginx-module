@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"os"
 	"time"
 
 	"google.golang.org/grpc"
@@ -22,10 +23,30 @@ type ConnectOption struct {
 	Insecure       bool
 	TLSVerify      bool
 	MaxRecvMsgSize int
+	ClientCertFile string
+	ClientKeyFile  string
 }
 
 type CallOption struct {
 	Timeout time.Duration
+}
+
+func newCert(certfile, keyfile string) (*tls.Certificate, error) {
+	cert, err := os.ReadFile(certfile)
+	if err != nil {
+		return nil, err
+	}
+
+	key, err := os.ReadFile(keyfile)
+	if err != nil {
+		return nil, err
+	}
+
+	tlsCert, err := tls.X509KeyPair(cert, key)
+	if err != nil {
+		return nil, err
+	}
+	return &tlsCert, nil
 }
 
 func Connect(target string, opt *ConnectOption) (*grpc.ClientConn, error) {
@@ -38,6 +59,17 @@ func Connect(target string, opt *ConnectOption) (*grpc.ClientConn, error) {
 		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	} else {
 		tc := &tls.Config{}
+
+		if (opt.ClientKeyFile == "") != (opt.ClientCertFile == "") {
+			return nil, fmt.Errorf("ClientKeyFile and ClientCertFile must both be present or both absent: key: %v, cert: %v]", opt.ClientKeyFile, opt.ClientCertFile)
+		}
+		if opt.ClientCertFile != "" {
+			certificate, err := newCert(opt.ClientCertFile, opt.ClientKeyFile)
+			if err != nil {
+				return nil, err
+			}
+			tc.Certificates = []tls.Certificate{*certificate}
+		}
 
 		if !opt.TLSVerify {
 			tc.InsecureSkipVerify = true
