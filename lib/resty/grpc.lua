@@ -4,6 +4,7 @@ local base = require("resty.core.base")
 local get_request = base.get_request
 local ffi = require("ffi")
 local C = ffi.C
+local ffi_cast = ffi.cast
 local NGX_OK = ngx.OK
 local subsystem = ngx.config.subsystem
 local is_http = subsystem == "http"
@@ -163,14 +164,14 @@ function _M.connect(target, opt)
     end
 
     if opt.client_cert then
-        opt_ptr.client_cert = ffi.cast("char *", opt.client_cert)
+        opt_ptr.client_cert = ffi_cast("char *", opt.client_cert)
         opt_ptr.client_cert_len = #opt.client_cert
     else
         opt_ptr.client_cert_len = 0
     end
 
     if opt.client_key then
-        opt_ptr.client_key = ffi.cast("char *", opt.client_key)
+        opt_ptr.client_key = ffi_cast("char *", opt.client_key)
         opt_ptr.client_key_len = #opt.client_key
     else
         opt_ptr.client_key_len = 0
