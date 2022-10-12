@@ -61,7 +61,7 @@ func Connect(target string, opt *ConnectOption) (*grpc.ClientConn, error) {
 		tc := &tls.Config{}
 
 		if (opt.ClientKeyFile == "") != (opt.ClientCertFile == "") {
-			return nil, fmt.Errorf("ClientKeyFile and ClientCertFile must both be present or both absent: key: %v, cert: %v]", opt.ClientKeyFile, opt.ClientCertFile)
+			return nil, fmt.Errorf("ClientKeyFile and ClientCertFile must both be present or both absent: key: %v, cert: %v", opt.ClientKeyFile, opt.ClientCertFile)
 		}
 		if opt.ClientCertFile != "" {
 			certificate, err := newCert(opt.ClientCertFile, opt.ClientKeyFile)
