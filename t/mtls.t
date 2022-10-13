@@ -70,8 +70,8 @@ location /t {
             {
                 tls_verify = true,
                 insecure = false,
-                client_cert = "tt/certs/mtls_client.crt",
-                client_key = "t/certs/mtls_client.key"
+                client_cert = "tt/certs/client.crt",
+                client_key = "t/certs/client.key"
             }
         )
         if err then
