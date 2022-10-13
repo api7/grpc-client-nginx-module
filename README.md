@@ -90,6 +90,7 @@ True by default. Set it to false will use TLS connection.
 * `max_recv_msg_size`: sets the maximum message size in bytes the client can receive.
 * `client_cert`: the path of certificate used in client certificate verification.
 * `client_key`: the path of key used in client certificate verification. The key should match the given certificate.
+* `trusted_ca`: the path of trusted certificate.
 
 ### call
 
