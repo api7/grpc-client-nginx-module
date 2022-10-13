@@ -14,6 +14,8 @@ typedef struct DialOpt {
     char                    *client_cert;
     int                      client_key_len;
     char                    *client_key;
+    int                      trusted_ca_len;
+    char                    *trusted_ca;
 } DialOpt;
 
 typedef uintptr_t ngx_msec_t;
@@ -93,6 +95,7 @@ func grpc_engine_connect(errBuf unsafe.Pointer, errLen *C.size_t,
 		MaxRecvMsgSize: int(opt.max_recv_msg_size),
 		ClientCertFile: C.GoStringN(opt.client_cert, opt.client_cert_len),
 		ClientKeyFile:  C.GoStringN(opt.client_key, opt.client_key_len),
+		TrustedCA:      C.GoStringN(opt.trusted_ca, opt.trusted_ca_len),
 	}
 	c, err := conn.Connect(target, co)
 	if err != nil {

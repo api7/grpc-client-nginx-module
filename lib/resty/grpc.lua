@@ -20,6 +20,8 @@ typedef struct DialOpt {
     char                    *client_cert;
     int                      client_key_len;
     char                    *client_key;
+    int                      trusted_ca_len;
+    char                    *trusted_ca;
 } DialOpt;
 
 typedef uintptr_t ngx_msec_t;
@@ -163,6 +165,12 @@ function _M.connect(target, opt)
         opt_ptr.max_recv_msg_size = 0
     end
 
+    if (opt.client_cert == nil ) ~= (opt.client_key == nil) then
+        return nil, string.format("client_cert and client_key must both be " ..
+                                    "present or both absent: cert: %s key: %s",
+                                     opt.client_cert or "", opt.client_key or "")
+    end
+
     if opt.client_cert then
         opt_ptr.client_cert = ffi_cast("char *", opt.client_cert)
         opt_ptr.client_cert_len = #opt.client_cert
@@ -175,6 +183,13 @@ function _M.connect(target, opt)
         opt_ptr.client_key_len = #opt.client_key
     else
         opt_ptr.client_key_len = 0
+    end
+
+    if opt.trusted_ca then
+        opt_ptr.trusted_ca = ffi_cast("char *", opt.trusted_ca)
+        opt_ptr.trusted_ca_len = #opt.trusted_ca
+    else
+        opt_ptr.trusted_ca_len = 0
     end
 
     local conn = {}
