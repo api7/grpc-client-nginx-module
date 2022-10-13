@@ -24,6 +24,9 @@ typedef struct {
 
 int
 ngx_grpc_cli_is_engine_inited(void);
+void
+ngx_grpc_cli_free_buf(const unsigned char *buf);
+
 void *
 ngx_grpc_cli_connect(unsigned char *err_buf, size_t *err_len,
                      void *r, bool is_http,
@@ -38,7 +41,7 @@ ngx_grpc_cli_call(unsigned char *err_buf, size_t *err_len,
                   void *ctx,
                   const char *method_data, int method_len,
                   const char *req_data, int req_len,
-                  void *opt);
+                  void *opt, ngx_str_t *blocking_call_output);
 
 void *
 ngx_grpc_cli_new_stream(unsigned char *err_buf, size_t *err_len,
@@ -88,6 +91,7 @@ local current_pb_state
 local ERR_BUF_SIZE = 512
 local err_buf = ffi.new("char[?]", ERR_BUF_SIZE)
 local err_len = ffi.new("size_t[1]")
+local blocking_call_output = ffi.new("ngx_str_t[1]")
 local gRPCClientStreamType = 1
 local gRPCServerStreamType = 2
 local gRPCBidirectionalStreamType = 3
@@ -207,16 +211,27 @@ local function call_with_pb_state(r, ctx, m, path, req, opt)
     end
 
     err_len[0] = ERR_BUF_SIZE
+    local resp_or_err
+
+    local blocking = ngx.get_phase() == "init_worker"
     local rc = C.ngx_grpc_cli_call(err_buf, err_len, r, is_http,
-                                   ctx, path, #path, encoded, #encoded, opt_buf)
+                                   ctx, path, #path, encoded, #encoded, opt_buf,
+                                   blocking and blocking_call_output or nil)
     if rc ~= NGX_OK then
         local err = ffi.string(err_buf, err_len[0])
         return nil, "failed to call: " .. err
     end
 
-    local ok, resp_or_err = coroutine._yield()
-    if not ok then
-        return nil, "failed to call: " .. resp_or_err
+    if blocking then
+        resp_or_err = ffi.string(blocking_call_output[0].data, blocking_call_output[0].len)
+        blocking_call_output[0].len = 0
+        C.ngx_grpc_cli_free_buf(blocking_call_output[0].data)
+
+    else
+        ok, resp_or_err = coroutine._yield()
+        if not ok then
+            return nil, "failed to call: " .. resp_or_err
+        end
     end
 
     pb.state(current_pb_state)
@@ -396,7 +411,6 @@ local function stream_recv(self)
     end
 
     local ok, resp_or_err = coroutine._yield()
-    ngx.log(ngx.EMERG, ok, " ", resp_or_err)
     if not ok then
         return nil, "failed to recv: " .. resp_or_err
     end
