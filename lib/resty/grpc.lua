@@ -82,7 +82,10 @@ if C.ngx_grpc_cli_is_engine_inited() == 0 then
 end
 
 
-local _M = {}
+local _M = {
+    PROTO_TYPE_FILE = 1,
+    PROTO_TYPE_STR = 2,
+}
 local Conn = {}
 Conn.__index = Conn
 local ClientStream = {}
@@ -104,7 +107,7 @@ local gRPCServerStreamType = 2
 local gRPCBidirectionalStreamType = 3
 
 
-function _M.load(filename)
+function _M.load(def, proto_type)
     if not protoc_inst then
         -- initialize protoc compiler
         pb.state(nil)
@@ -114,19 +117,34 @@ function _M.load(filename)
         current_pb_state = pb.state(nil)
     end
 
+    if not proto_type then
+        proto_type = _M.PROTO_TYPE_FILE
+    end
+
     pb.state(current_pb_state)
-    local ok, err = pcall(protoc_inst.loadfile, protoc_inst, filename)
+    local ok, err
+    local loaded_key
+
+    if proto_type == _M.PROTO_TYPE_FILE then
+        loaded_key = def
+        ok, err = pcall(protoc_inst.loadfile, protoc_inst, loaded_key)
+    else
+        -- proto_type == _M.PROTO_TYPE_STR
+        loaded_key = "dummy"
+        ok, err = pcall(protoc_inst.load, protoc_inst, def, loaded_key)
+    end
+
     if not ok then
         return nil, "failed to load protobuf: " .. err
     end
 
     local index = protoc_inst.index
-    for _, s in ipairs(protoc_inst.loaded[filename].service or {}) do
+    for _, s in ipairs(protoc_inst.loaded[loaded_key].service or {}) do
         local method_index = {}
         for _, m in ipairs(s.method) do
             method_index[m.name] = m
         end
-        index[protoc_inst.loaded[filename].package .. '.' .. s.name] = method_index
+        index[protoc_inst.loaded[loaded_key].package .. '.' .. s.name] = method_index
     end
 
     current_pb_state = pb.state(nil)

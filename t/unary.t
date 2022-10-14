@@ -10,7 +10,7 @@ __DATA__
 location /t {
     content_by_lua_block {
         local gcli = require("resty.grpc")
-        assert(gcli.load("t/testdata/rpc.proto"))
+        assert(gcli.load("t/testdata/rpc.proto", gcli.PROTO_TYPE_FILE))
 
         local conn = assert(gcli.connect("127.0.0.1:2379"))
         local res = conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'v'})
