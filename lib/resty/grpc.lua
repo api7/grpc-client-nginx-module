@@ -127,7 +127,7 @@ function _M.load(def, proto_type)
 
     if proto_type == _M.PROTO_TYPE_FILE then
         loaded_key = def
-        ok, err = pcall(protoc_inst.loadfile, protoc_inst, def)
+        ok, err = pcall(protoc_inst.loadfile, protoc_inst, loaded_key)
     else
         -- proto_type == _M.PROTO_TYPE_STR
         loaded_key = "dummy"
