@@ -1090,8 +1090,54 @@ ngx_grpc_cli_call(unsigned char *err_buf, size_t *err_len,
                   ngx_grpc_cli_ctx_t *ctx,
                   const char *method_data, int method_len,
                   const char *req_data, int req_len,
-                  ngx_grpc_cli_call_opt_t *call_opt)
+                  ngx_grpc_cli_call_opt_t *call_opt,
+                  ngx_str_t *blocking_call_output)
 {
+    if (blocking_call_output != NULL) {
+        ngx_grpc_cli_stream_ctx_t   sctx;
+        void                       *engine_ctx;
+        int                         n, type;
+        ngx_grpc_cli_task_res_t    *n_res, *res;
+
+        if (ctx->engine_ctx == NULL) {
+            *err_len = ngx_snprintf(err_buf, *err_len, "closed") - err_buf;
+            return NGX_ERROR;
+        }
+
+        engine_ctx = ctx->engine_ctx;
+
+        grpc_engine_call(err_buf, err_len, (uint64_t) &sctx, engine_ctx,
+                         method_data, method_len,
+                         req_data, req_len, call_opt);
+
+        n_res = grpc_engine_wait(&n, 3600);
+        if (n == 0) {
+            grpc_engine_free(n_res);
+            *err_len = ngx_snprintf(err_buf, *err_len, "timeout") - err_buf;
+            return NGX_ERROR;
+        }
+
+        res = &n_res[0];
+        assert(res->buf != NULL);
+        type = (int64_t) (res->buf) & 7;
+        res->buf = (u_char *) ((int64_t) (res->buf) >> 3 << 3);
+
+        if (type == NGX_GRPC_CLIENT_RES_TYPE_OK) {
+            blocking_call_output->data = res->buf;
+            blocking_call_output->len = res->size;
+            /* free the buf after converting it to Lua str in Lua land */
+
+        } else {
+            assert(type == NGX_GRPC_CLIENT_RES_TYPE_ERR);
+            *err_len = ngx_snprintf(err_buf, *err_len, "%*s", res->size, res->buf) - err_buf;
+            grpc_engine_free(res->buf);
+        }
+
+        grpc_engine_free(n_res);
+
+        return type == NGX_GRPC_CLIENT_RES_TYPE_ERR ? NGX_ERROR : NGX_OK;
+    }
+
     ngx_grpc_cli_stream_ctx_t *sctx;
 
     sctx = ngx_grpc_cli_new_stream(err_buf, err_len, r, is_http, ctx,
@@ -1269,4 +1315,11 @@ ngx_grpc_cli_stream_close_send(unsigned char *err_buf, size_t *err_len,
                    sctx, timeout);
 
     return NGX_OK;
+}
+
+
+void
+ngx_grpc_cli_free_buf(const unsigned char *buf)
+{
+    grpc_engine_free((void *) buf);
 }

@@ -548,3 +548,79 @@ location /t {
 qr/error: desc = "transport: authentication handshake failed: EOF",|error unmarshalling request: proto: wrong wireType = 0 for field Key,/
 --- grep_error_log_out eval
 qr/(error: desc = "transport: authentication handshake failed: EOF",|error unmarshalling request: proto: wrong wireType = 0 for field Key,)\n{1,5}/
+
+
+
+=== TEST 22: called in init_worker_by_lua_block
+--- http_config
+init_worker_by_lua_block {
+    local gcli = require("resty.grpc")
+    assert(gcli.load("t/testdata/rpc.proto"))
+
+    local conn = assert(gcli.connect("127.0.0.1:2379"))
+    local res = conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'v'})
+    local old = res.header.revision
+    local res = conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'c'})
+    package.loaded.diff = res.header.revision - old
+}
+--- config
+location /t {
+    content_by_lua_block {
+        ngx.say(package.loaded.diff)
+    }
+}
+--- response_body
+1
+
+
+
+=== TEST 23: called in init_worker_by_lua_block, something wrong happened
+--- http_config
+init_worker_by_lua_block {
+    local gcli = require("resty.grpc")
+    assert(gcli.load("t/testdata/rpc.proto"))
+
+    local conn = assert(gcli.connect("127.0.0.1:2376"))
+    local res, err = conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'v'})
+    package.loaded.err = err
+}
+--- config
+location /t {
+    content_by_lua_block {
+        ngx.say(package.loaded.err)
+    }
+}
+--- response_body eval
+qr/connect: connection refused/
+
+
+
+=== TEST 24: called in init_worker_by_lua_block, timeout
+--- http_config
+server {
+    listen 2376 http2;
+
+    location / {
+        access_by_lua_block {
+            ngx.sleep(4)
+        }
+        grpc_pass         grpc://127.0.0.1:2379;
+    }
+}
+init_worker_by_lua_block {
+    local gcli = require("resty.grpc")
+    assert(gcli.load("t/testdata/rpc.proto"))
+
+    local conn = assert(gcli.connect("127.0.0.1:2376"))
+    local opt = {timeout = 100}
+    local res, err = conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'v'}, opt)
+    package.loaded.err = err
+}
+--- config
+location /t {
+    content_by_lua_block {
+        ngx.say(package.loaded.err)
+    }
+}
+--- response_body eval
+qr/context deadline exceeded/
