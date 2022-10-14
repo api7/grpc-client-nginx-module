@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
+	"os"
 	"time"
 
 	"google.golang.org/grpc"
@@ -22,6 +24,9 @@ type ConnectOption struct {
 	Insecure       bool
 	TLSVerify      bool
 	MaxRecvMsgSize int
+	ClientCertFile string
+	ClientKeyFile  string
+	TrustedCA      string
 }
 
 type CallOption struct {
@@ -34,21 +39,42 @@ func Connect(target string, opt *ConnectOption) (*grpc.ClientConn, error) {
 		grpc.WithTimeout(60 * time.Second),
 	}
 
-	if opt.Insecure {
-		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	} else {
-		tc := &tls.Config{}
-
-		if !opt.TLSVerify {
-			tc.InsecureSkipVerify = true
-		}
-
-		opts = append(opts, grpc.WithTransportCredentials(credentials.NewTLS(tc)))
-	}
-
 	if opt.MaxRecvMsgSize != 0 {
 		opts = append(opts, grpc.WithMaxMsgSize(opt.MaxRecvMsgSize))
 	}
+	if opt.Insecure {
+		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		return grpc.Dial(target, opts...)
+	}
+
+	tc := &tls.Config{}
+	if !opt.TLSVerify {
+		tc.InsecureSkipVerify = true
+	} else {
+		if opt.ClientCertFile != "" && opt.ClientKeyFile != "" {
+			// Load the client certificate and its key
+			tlsCert, err := tls.LoadX509KeyPair(opt.ClientCertFile, opt.ClientKeyFile)
+			if err != nil {
+				return nil, err
+			}
+			if opt.TrustedCA != "" {
+				// Load the CA certificate
+				trustedCA, err := os.ReadFile(opt.TrustedCA)
+				if err != nil {
+					return nil, err
+				}
+				// Put the CA certificate to certificate pool
+				caPool := x509.NewCertPool()
+				if !caPool.AppendCertsFromPEM(trustedCA) {
+					return nil, fmt.Errorf("failed to append trusted certificate to certificate pool. %s", trustedCA)
+				}
+				tc.RootCAs = caPool
+			}
+			tc.Certificates = []tls.Certificate{tlsCert}
+		}
+	}
+
+	opts = append(opts, grpc.WithTransportCredentials(credentials.NewTLS(tc)))
 
 	conn, err := grpc.Dial(target, opts...)
 	if err != nil {

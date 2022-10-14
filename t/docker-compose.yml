@@ -28,6 +28,24 @@ services:
     volumes:
       - ./t/certs:/certs
 
+  etcd_mtls:
+    image: bitnami/etcd:3.5.4
+    restart: unless-stopped
+    env_file:
+      - t/env/etcd
+    environment:
+      ETCD_ADVERTISE_CLIENT_URLS: https://0.0.0.0:22379
+      ETCD_LISTEN_CLIENT_URLS: https://0.0.0.0:22379
+      ETCD_CERT_FILE: /certs/server.crt
+      ETCD_KEY_FILE: /certs/server.key
+      ETCD_CLIENT_CERT_AUTH: "true"
+      ETCD_TRUSTED_CA_FILE: /certs/ca.crt
+    ports:
+      - "22379:22379"
+      - "22380:22380"
+    volumes:
+      - ./t/certs:/certs
+
   backend:
     image: grpc-client-nginx-module-test-backend:latest
     restart: unless-stopped
