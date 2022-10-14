@@ -104,3 +104,25 @@ location /t {
 }
 --- response_body
 failed to call: rpc error: code = ResourceExhausted desc = grpc: received message larger than max (28 vs. 5)
+
+
+
+=== TEST 7: load str
+--- config
+location /t {
+    content_by_lua_block {
+        local gcli = require("resty.grpc")
+        local f = io.open("t/testdata/rpc.proto")
+        local content = f:read("*a")
+        f:close()
+        assert(gcli.load(content, gcli.PROTO_TYPE_STR))
+
+        local conn = assert(gcli.connect("127.0.0.1:2379"))
+        local res = conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'v'})
+        local old = res.header.revision
+        local res = conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'c'})
+        ngx.say(res.header.revision - old)
+    }
+}
+--- response_body
+1

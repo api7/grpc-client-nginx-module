@@ -72,9 +72,17 @@ return '';
 
 ### load
 
-**syntax:** *ok, err = resty.grpc.load(proto_file)*
+**syntax:** *ok, err = resty.grpc.load(proto[, proto_type])*
 
-Load the definition of the given proto file, which can be used later
+Load the definition of the given proto, which can be used later.
+The `proto_type` can be one of:
+
+* `PROTO_TYPE_FILE`
+* `PROTO_TYPE_STR`
+
+For instance, `grpc.load("t/testdata/rpc.proto", grpc.PROTO_TYPE_FILE)`
+
+If not given, `PROTO_TYPE_FILE` will be used by default.
 
 ### connect
 
