@@ -77,6 +77,7 @@ ngx_grpc_cli_stream_close_send(unsigned char *err_buf, size_t *err_len,
 if C.ngx_grpc_cli_is_engine_inited() == 0 then
     error("The gRPC client engine is not initialized. " ..
           "Need to ensure the grpc engine exist in the defined NGX_GRPC_CLI_ENGINE_PATH. " ..
+          "And the Nginx configuration contains 'thread_pool grpc-client-nginx-module'. " ..
           "And this library can not be loaded in the init phase."
           )
 end
