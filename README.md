@@ -112,6 +112,22 @@ callOpt:
 
 * `timeout`: Set the timeout value in milliseconds for the whole call.
 60000 milliseconds by default.
+* `int64_encoding`: Set the eocoding for int64. The value can be one of:
+  * INT64_AS_NUMBER: set value to integer when it fit into uint32, otherwise return a number **(default)**
+  * INT64_AS_STRING: same as above, but return a string instead
+  * INT64_AS_HEXSTRING: same as above, but return a hexadigit string instead
+
+For example,
+
+```
+conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'v'},
+            {int64_encoding = gcli.INT64_AS_STRING})
+```
+
+will decode int64 result in `#number`.
+
+*Note*: The string returned by `int64_as_string` or `int64_as_hexstring` will prefix a `'#'` character.
+This behavior is done in `lua-protobuf`.
 
 ### new_server_stream
 
@@ -125,6 +141,7 @@ callOpt:
 
 * `timeout`: Set the timeout value in milliseconds for the whole lifetime of
 the stream. 60000 milliseconds by default.
+* `int64_encoding`: Set the eocoding for int64.
 
 #### recv
 
@@ -145,6 +162,7 @@ callOpt:
 
 * `timeout`: Set the timeout value in milliseconds for the whole lifetime of
 the stream. 60000 milliseconds by default.
+* `int64_encoding`: Set the eocoding for int64.
 
 #### send
 
@@ -172,6 +190,7 @@ callOpt:
 
 * `timeout`: Set the timeout value in milliseconds for the whole lifetime of
 the stream. 60000 milliseconds by default.
+* `int64_encoding`: Set the eocoding for int64.
 
 The bidirectional stream has `send` and `recv`, which are equal to the corresponding
 version in client/server streams.

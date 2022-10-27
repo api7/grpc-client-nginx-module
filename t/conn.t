@@ -126,3 +126,33 @@ location /t {
 }
 --- response_body
 1
+
+
+
+=== TEST 8: int64_as_string/number/hexstring
+--- config
+location /t {
+    content_by_lua_block {
+        local gcli = require("resty.grpc")
+        assert(gcli.load("t/testdata/rpc.proto"))
+
+        local conn = assert(gcli.connect("127.0.0.1:2379"))
+        local res = conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'v'},
+            {int64_encoding = gcli.INT64_AS_STRING})
+        ngx.say(type(res.header.member_id))
+        local res = conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'c'})
+        ngx.say(type(res.header.member_id))
+        local res = conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'v'},
+            {int64_encoding = gcli.INT64_AS_NUMBER})
+        ngx.say(type(res.header.member_id))
+        local res = conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'v'},
+            {int64_encoding = gcli.INT64_AS_HEXSTRING})
+        ngx.say(type(res.header.member_id))
+        conn:close()
+    }
+}
+--- response_body
+string
+number
+number
+string
