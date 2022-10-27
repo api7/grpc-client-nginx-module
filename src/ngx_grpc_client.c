@@ -530,7 +530,6 @@ ngx_grpc_cli_to_resume(ngx_grpc_cli_stream_ctx_t *ctx)
         ngx_stream_lua_ctx_t                   *lctx;
 
         r = ctx->r;
-        c = r->connection;
 
         lctx = ngx_stream_lua_get_module_ctx(r, ngx_stream_lua_module);
         ngx_stream_lua_assert(lctx != NULL);
@@ -680,6 +679,7 @@ ngx_grpc_cli_thread(ngx_grpc_client_conf_t *gccf, ngx_cycle_t *cycle)
     ngx_thread_pool_t                  *thread_pool;
     ngx_thread_task_t                  *task;
     ngx_grpc_cli_thread_ctx_t          *thctx;
+    ngx_event_t                        *posted_ev;
 
     thread_pool = ngx_thread_pool_get(cycle, &thread_pool_name);
 
@@ -691,10 +691,17 @@ ngx_grpc_cli_thread(ngx_grpc_client_conf_t *gccf, ngx_cycle_t *cycle)
         return NGX_ERROR;
     }
 
+    posted_ev = ngx_pcalloc(cycle->pool, sizeof(ngx_event_t));
+    if (posted_ev == NULL) {
+        ngx_log_error(NGX_LOG_EMERG, cycle->log, 0,
+                      "failed to init engine: no memory");
+        return NGX_ERROR;
+    }
+
     thctx = task->ctx;
     thctx->task = task;
     thctx->thread_pool = thread_pool;
-    thctx->posted_ev = ngx_pcalloc(cycle->pool, sizeof(ngx_event_t));
+    thctx->posted_ev = posted_ev;
     thctx->posted_ev->handler = ngx_grpc_cli_thread_post_event_handler;
     thctx->posted_ev->data = thctx;
     thctx->posted_ev->log = cycle->log;
