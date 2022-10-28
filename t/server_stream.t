@@ -173,3 +173,37 @@ location /t {
 }
 --- response_body eval
 qr/(context deadline exceeded|timeout)/
+
+
+
+=== TEST 6: int64 encoding
+--- config
+location /t {
+    content_by_lua_block {
+        local gcli = require("resty.grpc")
+        assert(gcli.load("t/testdata/rpc.proto"))
+
+        local conn = assert(gcli.connect("127.0.0.1:2379"))
+        local write_conn = assert(gcli.connect("127.0.0.1:2379"))
+        local st, err = conn:new_server_stream("etcdserverpb.Watch", "Watch", {create_request = {key = 'k'}},
+            {timeout = 3000, int64_encoding = gcli.INT64_AS_STRING})
+        if not st then
+            ngx.say(err)
+            return
+        end
+
+        local function co()
+            assert(write_conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'recv'}))
+            assert(write_conn:call("etcdserverpb.KV", "DeleteRange", {key = 'k'}))
+        end
+        ngx.thread.spawn(co)
+
+        local res = assert(st:recv())
+        ngx.say(type(res.header.member_id))
+        local res = assert(st:recv())
+        ngx.say(type(res.header.member_id))
+    }
+}
+--- response_body
+string
+string

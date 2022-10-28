@@ -86,6 +86,10 @@ end
 local _M = {
     PROTO_TYPE_FILE = 1,
     PROTO_TYPE_STR = 2,
+
+    INT64_AS_NUMBER = 1,
+    INT64_AS_STRING = 2,
+    INT64_AS_HEXSTRING = 3,
 }
 local Conn = {}
 Conn.__index = Conn
@@ -155,6 +159,25 @@ end
 
 local function ctx_gc_handler(ctx)
     C.ngx_grpc_cli_close(ctx, nil, is_http)
+end
+
+
+local function load_state(opt, ...)
+    pb.state(current_pb_state)
+    local enc = opt.int64_encoding
+    if not enc or enc == _M.INT64_AS_NUMBER then
+        pb.option("int64_as_number")
+    else
+        if enc == _M.INT64_AS_STRING then
+            pb.option("int64_as_string")
+        else
+            pb.option("int64_as_hexstring")
+        end
+    end
+
+    local ok, res = pcall(...)
+    pb.state(nil)
+    return ok, res
 end
 
 
@@ -256,9 +279,7 @@ local function call_with_pb_state(r, ctx, m, path, req, opt)
         opt_ptr.timeout = 60 * 1000
     end
 
-    pb.state(current_pb_state)
-    local ok, encoded = pcall(pb.encode, m.input_type, req)
-    pb.state(nil)
+    local ok, encoded = load_state(opt, pb.encode, m.input_type, req)
     if not ok then
         return nil, "failed to encode: " .. encoded
     end
@@ -287,9 +308,7 @@ local function call_with_pb_state(r, ctx, m, path, req, opt)
         end
     end
 
-    pb.state(current_pb_state)
-    local ok, decoded = pcall(pb.decode, m.output_type, resp_or_err)
-    pb.state(nil)
+    local ok, decoded = load_state(opt, pb.decode, m.output_type, resp_or_err)
     if not ok then
         return nil, "failed to decode: " .. decoded
     end
@@ -381,9 +400,7 @@ local function new_stream(self, service, method, req, opt, stream_type)
         opt_ptr.timeout = 60 * 1000
     end
 
-    pb.state(current_pb_state)
-    local ok, encoded = pcall(pb.encode, m.input_type, req)
-    pb.state(nil)
+    local ok, encoded = load_state(opt, pb.encode, m.input_type, req)
     if not ok then
         return nil, "failed to encode: " .. encoded
     end
@@ -407,6 +424,7 @@ local function new_stream(self, service, method, req, opt, stream_type)
         ctx = stream_ctx,
         input_type = m.input_type,
         output_type = m.output_type,
+        opt = opt,
         opt_buf = opt_buf,
     }
     ffi.gc(stream_ctx, stream_gc_handler)
@@ -468,9 +486,7 @@ local function stream_recv(self)
         return nil, "failed to recv: " .. resp_or_err
     end
 
-    pb.state(current_pb_state)
-    local ok, decoded = pcall(pb.decode, self.output_type, resp_or_err)
-    pb.state(nil)
+    local ok, decoded = load_state(self.opt, pb.decode, self.output_type, resp_or_err)
     if not ok then
         return nil, "failed to decode: " .. decoded
     end
@@ -487,12 +503,10 @@ local function stream_send(self, req)
     local ctx = self.ctx
     local r = get_request()
 
-    pb.state(current_pb_state)
-    local ok, encoded = pcall(pb.encode, self.input_type, req)
+    local ok, encoded = load_state(self.opt, pb.encode, self.input_type, req)
     if not ok then
         return nil, "failed to encode: " .. encoded
     end
-    pb.state(nil)
 
     err_len[0] = ERR_BUF_SIZE
     local rc = C.ngx_grpc_cli_stream_send(err_buf, err_len, r, is_http, ctx, self.opt_buf,
