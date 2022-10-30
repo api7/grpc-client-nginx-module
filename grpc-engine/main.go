@@ -25,7 +25,6 @@ typedef struct CallOpt {
 */
 import "C"
 import (
-	"errors"
 	"log"
 	"os"
 	"sync"
@@ -108,11 +107,6 @@ func grpc_engine_connect(errBuf unsafe.Pointer, errLen *C.size_t,
 
 	// A Go function called by C code may not return a Go pointer
 	var ref unsafe.Pointer = C.malloc(C.size_t(1))
-	if ref == nil {
-		reportErr(errors.New("no memory"), errBuf, errLen)
-		return nil
-	}
-
 	EngineCtxRef.Store(ref, &ctx)
 	return ref
 }
