@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <dlfcn.h>
 #include <stdbool.h>
 #include <ngx_config.h>
