@@ -11,13 +11,22 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+header:
+  license:
+    spdx-id: Apache-2.0
+    copyright-owner: Shenzhen ZhiLiu Technology Co., Ltd.
 
-FROM golang:1.19-bullseye
+  paths-ignore:
+    - '.gitignore'
+    - '.gitattributes'
+    - 'LICENSE'
+    - '*.md'
+    - '**/go.mod'
+    - '**/go.sum'
+    - 't/backend/proto'
+    - 't/certs'
+    - 't/env'
+    - 't/testdata'
 
-ADD . /usr/local/backend
-WORKDIR /usr/local/backend
-ARG ENABLE_PROXY
-RUN if [ "$ENABLE_PROXY" = "true" ] ; then go env -w GOPROXY=https://goproxy.io,direct ; fi \
-    && go env \
-    && go build
-ENTRYPOINT [ "/usr/local/backend/backend" ]
+  comment: on-failure
