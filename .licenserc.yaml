@@ -28,5 +28,7 @@ header:
     - 't/certs'
     - 't/env'
     - 't/testdata'
+    # https://github.com/api7/grpc-client-nginx-module/pull/54
+    - '.github'
 
   comment: on-failure
