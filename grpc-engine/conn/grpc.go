@@ -50,28 +50,28 @@ func Connect(target string, opt *ConnectOption) (*grpc.ClientConn, error) {
 	tc := &tls.Config{}
 	if !opt.TLSVerify {
 		tc.InsecureSkipVerify = true
-	} else {
-		if opt.ClientCertFile != "" && opt.ClientKeyFile != "" {
-			// Load the client certificate and its key
-			tlsCert, err := tls.LoadX509KeyPair(opt.ClientCertFile, opt.ClientKeyFile)
+	}
+
+	if opt.ClientCertFile != "" && opt.ClientKeyFile != "" {
+		// Load the client certificate and its key
+		tlsCert, err := tls.LoadX509KeyPair(opt.ClientCertFile, opt.ClientKeyFile)
+		if err != nil {
+			return nil, err
+		}
+		if opt.TrustedCA != "" {
+			// Load the CA certificate
+			trustedCA, err := os.ReadFile(opt.TrustedCA)
 			if err != nil {
 				return nil, err
 			}
-			if opt.TrustedCA != "" {
-				// Load the CA certificate
-				trustedCA, err := os.ReadFile(opt.TrustedCA)
-				if err != nil {
-					return nil, err
-				}
-				// Put the CA certificate to certificate pool
-				caPool := x509.NewCertPool()
-				if !caPool.AppendCertsFromPEM(trustedCA) {
-					return nil, fmt.Errorf("failed to append trusted certificate to certificate pool. %s", trustedCA)
-				}
-				tc.RootCAs = caPool
+			// Put the CA certificate to certificate pool
+			caPool := x509.NewCertPool()
+			if !caPool.AppendCertsFromPEM(trustedCA) {
+				return nil, fmt.Errorf("failed to append trusted certificate to certificate pool. %s", trustedCA)
 			}
-			tc.Certificates = []tls.Certificate{tlsCert}
+			tc.RootCAs = caPool
 		}
+		tc.Certificates = []tls.Certificate{tlsCert}
 	}
 
 	opts = append(opts, grpc.WithTransportCredentials(credentials.NewTLS(tc)))
