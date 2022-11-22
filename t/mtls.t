@@ -138,3 +138,32 @@ location /t {
 }
 --- response_body
 failed to call: rpc error: code = Unavailable desc = connection error: desc = "transport: authentication handshake failed: x509: certificate signed by unknown authority"
+
+
+
+=== TEST 6: pass client cert when we don't verify server cert
+--- config
+location /t {
+    content_by_lua_block {
+        local gcli = require("resty.grpc")
+        assert(gcli.load("t/testdata/rpc.proto"))
+
+        local conn = assert(gcli.connect("127.0.0.1:22379",
+            {
+                tls_verify = true,
+                insecure = false,
+                client_cert = "t/certs/client.crt",
+                client_key = "t/certs/client.key",
+                trusted_ca = "t/certs/ca.crt"
+            })
+        )
+        local res, err = conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'v'})
+        if err then
+            return ngx.say(err)
+        end
+        conn:close()
+        ngx.say("ok")
+    }
+}
+--- response_body
+ok
