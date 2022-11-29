@@ -30,7 +30,7 @@ $ENV{TEST_NGINX_HTML_DIR} ||= html_dir();
 add_block_preprocessor(sub {
     my ($block) = @_;
 
-    if (!$block->no_error_log && !$block->error_log) {
+    if (!$block->no_error_log && !$block->error_log && !$block->grep_error_log) {
         $block->set_value("no_error_log", "[error]\n[alert]\nERROR: AddressSanitizer");
     }
 

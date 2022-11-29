@@ -170,3 +170,60 @@ string
 number
 number
 string
+
+
+
+=== TEST 9: stream closed during processing
+--- http_config
+server {
+    listen 2376 http2;
+
+    location / {
+        access_by_lua_block {
+            if package.loaded.count == nil then
+                package.loaded.count = 0
+            end
+
+            local count = package.loaded.count
+            if count == 1 then
+                package.loaded.count = package.loaded.count + 1
+                ngx.exit(499)
+            end
+            package.loaded.count = package.loaded.count + 1
+        }
+        grpc_pass         grpc://127.0.0.1:2379;
+    }
+}
+--- config
+location /t {
+    content_by_lua_block {
+        local gcli = require("resty.grpc")
+        assert(gcli.load("t/testdata/rpc.proto"))
+
+        local conn = assert(gcli.connect("127.0.0.1:2376"))
+        local function co()
+            local st, err = conn:new_server_stream("etcdserverpb.Watch", "Watch", {create_request = {key = 'k'}})
+            if not st then
+                ngx.say(err)
+                return
+            end
+
+            local ok, err = st:recv()
+            if not ok then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+        end
+        local ths = {}
+        for i = 1, 3 do
+            co()
+        end
+        ngx.say("true")
+    }
+}
+--- response_body
+true
+--- grep_error_log eval
+qr/failed to recv: rpc error: code = Internal desc = stream terminated/
+--- grep_error_log_out
+failed to recv: rpc error: code = Internal desc = stream terminated
