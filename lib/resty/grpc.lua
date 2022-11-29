@@ -127,20 +127,21 @@ local gRPCBidirectionalStreamType = 3
 
 
 function _M.load(def, proto_type)
+    local old_state
     if not protoc_inst then
         -- initialize protoc compiler
-        pb.state(nil)
+        old_state = pb.state(nil)
         protoc.reload()
         protoc_inst = protoc.new()
         protoc_inst.index = {}
-        current_pb_state = pb.state(nil)
+    else
+        old_state = pb.state(current_pb_state)
     end
 
     if not proto_type then
         proto_type = _M.PROTO_TYPE_FILE
     end
 
-    pb.state(current_pb_state)
     local ok, err
     local loaded_key
 
@@ -154,6 +155,7 @@ function _M.load(def, proto_type)
     end
 
     if not ok then
+        pb.state(old_state)
         return nil, "failed to load protobuf: " .. err
     end
 
@@ -167,6 +169,7 @@ function _M.load(def, proto_type)
     end
 
     current_pb_state = pb.state(nil)
+    pb.state(old_state)
     return true
 end
 
@@ -177,7 +180,7 @@ end
 
 
 local function load_state(opt, ...)
-    pb.state(current_pb_state)
+    local old_state = pb.state(current_pb_state)
     local enc = opt.int64_encoding
     if not enc or enc == _M.INT64_AS_NUMBER then
         pb.option("int64_as_number")
@@ -190,7 +193,7 @@ local function load_state(opt, ...)
     end
 
     local ok, res = pcall(...)
-    pb.state(nil)
+    pb.state(old_state)
     return ok, res
 end
 
