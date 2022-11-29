@@ -42,3 +42,37 @@ location /t {
 nil
 --- error_log
 API disabled in the context of header_filter_by_lua*
+
+
+
+=== TEST 2: ensure state is recovered
+--- config
+location /t {
+    content_by_lua_block {
+        local gcli = require("resty.grpc")
+        local pb = require("pb")
+        local protoc = require("protoc").new()
+        protoc:load([[
+            syntax = "proto3";
+            package test;
+            message test {
+                string data = 1;
+            }
+        ]])
+        -- trigger an error
+        gcli.load("t/testdata/missing.proto")
+        local encoded = pb.encode("test.test", {data = "ok"})
+        gcli.load("t/testdata/rpc.proto")
+        local decoded = pb.decode("test.test", encoded)
+        ngx.say(decoded.data)
+
+        local conn = assert(gcli.connect("127.0.0.1:2379"))
+        package.loaded.conn = conn
+        local res, err = conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'v'})
+        local decoded = pb.decode("test.test", encoded)
+        ngx.say(decoded.data)
+    }
+}
+--- response_body
+ok
+ok
