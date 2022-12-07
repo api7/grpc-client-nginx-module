@@ -32,9 +32,19 @@ typedef struct DialOpt {
     char                    *trusted_ca;
 } DialOpt;
 
+typedef struct Metadata {
+	int		key_len;
+	int		value_len;
+	char   *key;
+	char   *value;
+} Metadata;
+
 typedef uintptr_t ngx_msec_t;
 typedef struct CallOpt {
     ngx_msec_t timeout;
+
+	int		   metadata_len;
+	Metadata  *metadata;
 } CallOpt;
 */
 import "C"
@@ -138,6 +148,21 @@ func grpc_engine_close(ref unsafe.Pointer) {
 	C.free(ref)
 }
 
+func convertMetadata(opt *C.struct_CallOpt) []string {
+	if opt.metadata_len == 0 {
+		return nil
+	}
+
+	md := make([]string, opt.metadata_len*2)
+	pair := opt.metadata
+	for i := 0; i < int(opt.metadata_len*2); i += 2 {
+		md[i] = C.GoStringN(pair.key, pair.key_len)
+		md[i+1] = C.GoStringN(pair.value, pair.value_len)
+		pair = (*C.struct_Metadata)(unsafe.Pointer(uintptr(unsafe.Pointer(pair)) + unsafe.Sizeof(*pair)))
+	}
+	return md
+}
+
 //export grpc_engine_call
 func grpc_engine_call(errBuf unsafe.Pointer, errLen *C.size_t,
 	taskId C.long, ref unsafe.Pointer,
@@ -150,7 +175,8 @@ func grpc_engine_call(errBuf unsafe.Pointer, errLen *C.size_t,
 	ctx := mustFind(&EngineCtxRef, ref).(*EngineCtx)
 	c := ctx.c
 	co := &conn.CallOption{
-		Timeout: time.Duration(opt.timeout) * time.Millisecond,
+		Timeout:  time.Duration(opt.timeout) * time.Millisecond,
+		Metadata: convertMetadata(opt),
 	}
 
 	go func() {
@@ -171,7 +197,8 @@ func grpc_engine_new_stream(errBuf unsafe.Pointer, errLen *C.size_t,
 	ctx := mustFind(&EngineCtxRef, ref).(*EngineCtx)
 	c := ctx.c
 	co := &conn.CallOption{
-		Timeout: time.Duration(opt.timeout) * time.Millisecond,
+		Timeout:  time.Duration(opt.timeout) * time.Millisecond,
+		Metadata: convertMetadata(opt),
 	}
 
 	go func() {

@@ -1,10 +1,15 @@
 syntax = "proto3";
 
-package stream;
+package test;
 option go_package = "./proto";
+
+service Echo {
+  rpc Metadata (RecvReq) returns (RecvResp) {}
+}
 
 service ClientStream {
   rpc Recv (stream RecvReq) returns (RecvResp) {}
+  rpc RecvMetadata (stream RecvReq) returns (RecvResp) {}
 }
 
 service BidirectionalStream {
