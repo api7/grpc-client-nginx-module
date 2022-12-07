@@ -205,7 +205,7 @@ ngx_grpc_cli_thread_handler(void *data, ngx_log_t *log)
 {
     ngx_grpc_cli_thread_ctx_t     *thctx = data;
 
-    thctx->finished_tasks = grpc_engine_wait(&thctx->finished_task_num, 5);
+    thctx->finished_tasks = grpc_engine_wait(&thctx->finished_task_num, 100);
 }
 
 
@@ -1134,7 +1134,7 @@ ngx_grpc_cli_call(unsigned char *err_buf, size_t *err_len,
                          method_data, method_len,
                          req_data, req_len, call_opt);
 
-        n_res = grpc_engine_wait(&n, 3600);
+        n_res = grpc_engine_wait(&n, 600 * 1000);
         if (n == 0) {
             grpc_engine_free(n_res);
             *err_len = ngx_snprintf(err_buf, *err_len, "timeout") - err_buf;
