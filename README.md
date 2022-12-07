@@ -129,6 +129,20 @@ will decode int64 result in `#number`.
 *Note*: The string returned by `int64_as_string` or `int64_as_hexstring` will prefix a `'#'` character.
 This behavior is done in `lua-protobuf`.
 
+* `metadata`: Set the gRPC metadata with an array of key-value pairs.
+
+For example,
+
+```
+conn:call("etcdserverpb.KV", "Put", {key = 'k', value = 'v'},
+          {metadata = {
+            {"user", "john"},
+            {"password", "*&()"},
+            {"key", "val1"},
+            {"key", "val2"},
+          }})
+```
+
 ### new_server_stream
 
 **syntax:** *stream, err = conn:new_server_stream(service, method, request, callOpt)*
@@ -142,6 +156,7 @@ callOpt:
 * `timeout`: Set the timeout value in milliseconds for the whole lifetime of
 the stream. 60000 milliseconds by default.
 * `int64_encoding`: Set the eocoding for int64.
+* `metadata`: Set the gRPC metadata with an array of key-value pairs.
 
 #### recv
 

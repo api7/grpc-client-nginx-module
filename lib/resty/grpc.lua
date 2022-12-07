@@ -38,9 +38,19 @@ typedef struct DialOpt {
     char                    *trusted_ca;
 } DialOpt;
 
+typedef struct {
+	int		key_len;
+	int		value_len;
+	char   *key;
+	char   *value;
+} Metadata;
+
 typedef uintptr_t ngx_msec_t;
 typedef struct {
     ngx_msec_t timeout;
+
+	int		   metadata_len;
+	Metadata  *metadata;
 } CallOpt;
 
 int
@@ -283,6 +293,23 @@ function Conn:close()
 end
 
 
+local function attach_metadata(opt, opt_ptr)
+    if type(opt.metadata) ~= "table" then
+        return
+    end
+
+    opt_ptr.metadata_len = #opt.metadata
+    opt_ptr.metadata = ffi.new("Metadata[?]", #opt.metadata)
+    for i, pair in ipairs(opt.metadata) do
+        local md = opt_ptr.metadata[i-1]
+        md.key = ffi.cast("char*", pair[1])
+        md.key_len = #pair[1]
+        md.value = ffi.cast("char*", pair[2])
+        md.value_len = #pair[2]
+    end
+end
+
+
 local function call_with_pb_state(r, ctx, m, path, req, opt)
     local opt_buf = ffi.new("CallOpt[1]")
     local opt_ptr = opt_buf[0]
@@ -292,6 +319,8 @@ local function call_with_pb_state(r, ctx, m, path, req, opt)
     else
         opt_ptr.timeout = 60 * 1000
     end
+
+    attach_metadata(opt, opt_ptr)
 
     local ok, encoded = load_state(opt, pb.encode, m.input_type, req)
     if not ok then
@@ -413,6 +442,8 @@ local function new_stream(self, service, method, req, opt, stream_type)
         -- but set it for the whole lifetime in the grpc engine
         opt_ptr.timeout = 60 * 1000
     end
+
+    attach_metadata(opt, opt_ptr)
 
     local ok, encoded = load_state(opt, pb.encode, m.input_type, req)
     if not ok then

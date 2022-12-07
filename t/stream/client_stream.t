@@ -22,10 +22,10 @@ __DATA__
 --- stream_server_config
     content_by_lua_block {
         local gcli = require("resty.grpc")
-        assert(gcli.load("t/backend/proto/stream.proto"))
+        assert(gcli.load("t/backend/proto/test.proto"))
 
         local conn = assert(gcli.connect("127.0.0.1:50051"))
-        local st, err = conn:new_client_stream("stream.ClientStream", "Recv", {data = "a"})
+        local st, err = conn:new_client_stream("test.ClientStream", "Recv", {data = "a"})
         if not st then
             ngx.say(err)
             return
@@ -42,11 +42,11 @@ ok
 --- stream_server_config
     content_by_lua_block {
         local gcli = require("resty.grpc")
-        assert(gcli.load("t/backend/proto/stream.proto"))
+        assert(gcli.load("t/backend/proto/test.proto"))
 
         local conn = assert(gcli.connect("127.0.0.1:50051"))
         do
-            local st, err = conn:new_client_stream("stream.ClientStream", "Recv", {data = "a"})
+            local st, err = conn:new_client_stream("test.ClientStream", "Recv", {data = "a"})
             if not st then
                 ngx.say(err)
                 return
@@ -63,10 +63,10 @@ ok
 --- stream_server_config
     content_by_lua_block {
         local gcli = require("resty.grpc")
-        assert(gcli.load("t/backend/proto/stream.proto"))
+        assert(gcli.load("t/backend/proto/test.proto"))
 
         local conn = assert(gcli.connect("127.0.0.1:50051"))
-        local st, err = conn:new_client_stream("stream.ClientStream", "Recv", {data = "a"})
+        local st, err = conn:new_client_stream("test.ClientStream", "Recv", {data = "a"})
         if not st then
             ngx.say(err)
             return
@@ -89,10 +89,10 @@ a
 --- stream_server_config
     content_by_lua_block {
         local gcli = require("resty.grpc")
-        assert(gcli.load("t/backend/proto/stream.proto"))
+        assert(gcli.load("t/backend/proto/test.proto"))
 
         local conn = assert(gcli.connect("127.0.0.1:50051"))
-        local st, err = conn:new_client_stream("stream.ClientStream", "Recv", {data = "a"})
+        local st, err = conn:new_client_stream("test.ClientStream", "Recv", {data = "a"})
         if not st then
             ngx.say(err)
             return

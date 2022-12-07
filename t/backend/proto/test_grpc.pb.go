@@ -14,11 +14,98 @@ import (
 // Requires gRPC-Go v1.32.0 or later.
 const _ = grpc.SupportPackageIsVersion7
 
+// EchoClient is the client API for Echo service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type EchoClient interface {
+	Metadata(ctx context.Context, in *RecvReq, opts ...grpc.CallOption) (*RecvResp, error)
+}
+
+type echoClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewEchoClient(cc grpc.ClientConnInterface) EchoClient {
+	return &echoClient{cc}
+}
+
+func (c *echoClient) Metadata(ctx context.Context, in *RecvReq, opts ...grpc.CallOption) (*RecvResp, error) {
+	out := new(RecvResp)
+	err := c.cc.Invoke(ctx, "/test.Echo/Metadata", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// EchoServer is the server API for Echo service.
+// All implementations must embed UnimplementedEchoServer
+// for forward compatibility
+type EchoServer interface {
+	Metadata(context.Context, *RecvReq) (*RecvResp, error)
+	mustEmbedUnimplementedEchoServer()
+}
+
+// UnimplementedEchoServer must be embedded to have forward compatible implementations.
+type UnimplementedEchoServer struct {
+}
+
+func (UnimplementedEchoServer) Metadata(context.Context, *RecvReq) (*RecvResp, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Metadata not implemented")
+}
+func (UnimplementedEchoServer) mustEmbedUnimplementedEchoServer() {}
+
+// UnsafeEchoServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to EchoServer will
+// result in compilation errors.
+type UnsafeEchoServer interface {
+	mustEmbedUnimplementedEchoServer()
+}
+
+func RegisterEchoServer(s grpc.ServiceRegistrar, srv EchoServer) {
+	s.RegisterService(&Echo_ServiceDesc, srv)
+}
+
+func _Echo_Metadata_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RecvReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EchoServer).Metadata(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/test.Echo/Metadata",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EchoServer).Metadata(ctx, req.(*RecvReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// Echo_ServiceDesc is the grpc.ServiceDesc for Echo service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var Echo_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "test.Echo",
+	HandlerType: (*EchoServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Metadata",
+			Handler:    _Echo_Metadata_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "proto/test.proto",
+}
+
 // ClientStreamClient is the client API for ClientStream service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ClientStreamClient interface {
 	Recv(ctx context.Context, opts ...grpc.CallOption) (ClientStream_RecvClient, error)
+	RecvMetadata(ctx context.Context, opts ...grpc.CallOption) (ClientStream_RecvMetadataClient, error)
 }
 
 type clientStreamClient struct {
@@ -30,7 +117,7 @@ func NewClientStreamClient(cc grpc.ClientConnInterface) ClientStreamClient {
 }
 
 func (c *clientStreamClient) Recv(ctx context.Context, opts ...grpc.CallOption) (ClientStream_RecvClient, error) {
-	stream, err := c.cc.NewStream(ctx, &ClientStream_ServiceDesc.Streams[0], "/stream.ClientStream/Recv", opts...)
+	stream, err := c.cc.NewStream(ctx, &ClientStream_ServiceDesc.Streams[0], "/test.ClientStream/Recv", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -63,11 +150,46 @@ func (x *clientStreamRecvClient) CloseAndRecv() (*RecvResp, error) {
 	return m, nil
 }
 
+func (c *clientStreamClient) RecvMetadata(ctx context.Context, opts ...grpc.CallOption) (ClientStream_RecvMetadataClient, error) {
+	stream, err := c.cc.NewStream(ctx, &ClientStream_ServiceDesc.Streams[1], "/test.ClientStream/RecvMetadata", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &clientStreamRecvMetadataClient{stream}
+	return x, nil
+}
+
+type ClientStream_RecvMetadataClient interface {
+	Send(*RecvReq) error
+	CloseAndRecv() (*RecvResp, error)
+	grpc.ClientStream
+}
+
+type clientStreamRecvMetadataClient struct {
+	grpc.ClientStream
+}
+
+func (x *clientStreamRecvMetadataClient) Send(m *RecvReq) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *clientStreamRecvMetadataClient) CloseAndRecv() (*RecvResp, error) {
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	m := new(RecvResp)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // ClientStreamServer is the server API for ClientStream service.
 // All implementations must embed UnimplementedClientStreamServer
 // for forward compatibility
 type ClientStreamServer interface {
 	Recv(ClientStream_RecvServer) error
+	RecvMetadata(ClientStream_RecvMetadataServer) error
 	mustEmbedUnimplementedClientStreamServer()
 }
 
@@ -77,6 +199,9 @@ type UnimplementedClientStreamServer struct {
 
 func (UnimplementedClientStreamServer) Recv(ClientStream_RecvServer) error {
 	return status.Errorf(codes.Unimplemented, "method Recv not implemented")
+}
+func (UnimplementedClientStreamServer) RecvMetadata(ClientStream_RecvMetadataServer) error {
+	return status.Errorf(codes.Unimplemented, "method RecvMetadata not implemented")
 }
 func (UnimplementedClientStreamServer) mustEmbedUnimplementedClientStreamServer() {}
 
@@ -117,11 +242,37 @@ func (x *clientStreamRecvServer) Recv() (*RecvReq, error) {
 	return m, nil
 }
 
+func _ClientStream_RecvMetadata_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(ClientStreamServer).RecvMetadata(&clientStreamRecvMetadataServer{stream})
+}
+
+type ClientStream_RecvMetadataServer interface {
+	SendAndClose(*RecvResp) error
+	Recv() (*RecvReq, error)
+	grpc.ServerStream
+}
+
+type clientStreamRecvMetadataServer struct {
+	grpc.ServerStream
+}
+
+func (x *clientStreamRecvMetadataServer) SendAndClose(m *RecvResp) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *clientStreamRecvMetadataServer) Recv() (*RecvReq, error) {
+	m := new(RecvReq)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // ClientStream_ServiceDesc is the grpc.ServiceDesc for ClientStream service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var ClientStream_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "stream.ClientStream",
+	ServiceName: "test.ClientStream",
 	HandlerType: (*ClientStreamServer)(nil),
 	Methods:     []grpc.MethodDesc{},
 	Streams: []grpc.StreamDesc{
@@ -130,8 +281,13 @@ var ClientStream_ServiceDesc = grpc.ServiceDesc{
 			Handler:       _ClientStream_Recv_Handler,
 			ClientStreams: true,
 		},
+		{
+			StreamName:    "RecvMetadata",
+			Handler:       _ClientStream_RecvMetadata_Handler,
+			ClientStreams: true,
+		},
 	},
-	Metadata: "proto/stream.proto",
+	Metadata: "proto/test.proto",
 }
 
 // BidirectionalStreamClient is the client API for BidirectionalStream service.
@@ -151,7 +307,7 @@ func NewBidirectionalStreamClient(cc grpc.ClientConnInterface) BidirectionalStre
 }
 
 func (c *bidirectionalStreamClient) Echo(ctx context.Context, opts ...grpc.CallOption) (BidirectionalStream_EchoClient, error) {
-	stream, err := c.cc.NewStream(ctx, &BidirectionalStream_ServiceDesc.Streams[0], "/stream.BidirectionalStream/Echo", opts...)
+	stream, err := c.cc.NewStream(ctx, &BidirectionalStream_ServiceDesc.Streams[0], "/test.BidirectionalStream/Echo", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -182,7 +338,7 @@ func (x *bidirectionalStreamEchoClient) Recv() (*RecvResp, error) {
 }
 
 func (c *bidirectionalStreamClient) EchoSum(ctx context.Context, opts ...grpc.CallOption) (BidirectionalStream_EchoSumClient, error) {
-	stream, err := c.cc.NewStream(ctx, &BidirectionalStream_ServiceDesc.Streams[1], "/stream.BidirectionalStream/EchoSum", opts...)
+	stream, err := c.cc.NewStream(ctx, &BidirectionalStream_ServiceDesc.Streams[1], "/test.BidirectionalStream/EchoSum", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -300,7 +456,7 @@ func (x *bidirectionalStreamEchoSumServer) Recv() (*RecvReq, error) {
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var BidirectionalStream_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "stream.BidirectionalStream",
+	ServiceName: "test.BidirectionalStream",
 	HandlerType: (*BidirectionalStreamServer)(nil),
 	Methods:     []grpc.MethodDesc{},
 	Streams: []grpc.StreamDesc{
@@ -317,5 +473,5 @@ var BidirectionalStream_ServiceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 	},
-	Metadata: "proto/stream.proto",
+	Metadata: "proto/test.proto",
 }

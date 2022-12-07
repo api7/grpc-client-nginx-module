@@ -23,10 +23,10 @@ __DATA__
 location /t {
     content_by_lua_block {
         local gcli = require("resty.grpc")
-        assert(gcli.load("t/backend/proto/stream.proto"))
+        assert(gcli.load("t/backend/proto/test.proto"))
 
         local conn = assert(gcli.connect("127.0.0.1:50051"))
-        local st, err = conn:new_bidirectional_stream("stream.BidirectionalStream", "Echo", {data = "a"})
+        local st, err = conn:new_bidirectional_stream("test.BidirectionalStream", "Echo", {data = "a"})
         if not st then
             ngx.say(err)
             return
@@ -44,10 +44,10 @@ ok
 location /t {
     content_by_lua_block {
         local gcli = require("resty.grpc")
-        assert(gcli.load("t/backend/proto/stream.proto"))
+        assert(gcli.load("t/backend/proto/test.proto"))
 
         local conn = assert(gcli.connect("127.0.0.1:50051"))
-        local st, err = conn:new_bidirectional_stream("stream.BidirectionalStream", "Echo", {data = "a"})
+        local st, err = conn:new_bidirectional_stream("test.BidirectionalStream", "Echo", {data = "a"})
         if not st then
             ngx.say(err)
             return
@@ -72,10 +72,10 @@ a
 location /t {
     content_by_lua_block {
         local gcli = require("resty.grpc")
-        assert(gcli.load("t/backend/proto/stream.proto"))
+        assert(gcli.load("t/backend/proto/test.proto"))
 
         local conn = assert(gcli.connect("127.0.0.1:50051"))
-        local st, err = conn:new_bidirectional_stream("stream.BidirectionalStream", "Echo", {data = "a"})
+        local st, err = conn:new_bidirectional_stream("test.BidirectionalStream", "Echo", {data = "a"})
         if not st then
             ngx.say(err)
             return
@@ -118,10 +118,10 @@ a
 location /t {
     content_by_lua_block {
         local gcli = require("resty.grpc")
-        assert(gcli.load("t/backend/proto/stream.proto"))
+        assert(gcli.load("t/backend/proto/test.proto"))
 
         local conn = assert(gcli.connect("127.0.0.1:50051"))
-        local st, err = conn:new_bidirectional_stream("stream.BidirectionalStream", "EchoSum", {data = "a"})
+        local st, err = conn:new_bidirectional_stream("test.BidirectionalStream", "EchoSum", {data = "a"})
         if not st then
             ngx.say(err)
             return

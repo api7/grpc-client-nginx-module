@@ -26,6 +26,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 )
 
 const (
@@ -44,7 +45,8 @@ type ConnectOption struct {
 }
 
 type CallOption struct {
-	Timeout time.Duration
+	Timeout  time.Duration
+	Metadata []string
 }
 
 func Connect(target string, opt *ConnectOption) (*grpc.ClientConn, error) {
@@ -103,8 +105,14 @@ func Close(c *grpc.ClientConn) {
 	c.Close()
 }
 
-func Call(c *grpc.ClientConn, method string, req []byte, opt *CallOption) ([]byte, error) {
+func createCtxWithMd(pairs []string) context.Context {
 	ctx := context.Background()
+	md := metadata.Pairs(pairs...)
+	return metadata.NewOutgoingContext(ctx, md)
+}
+
+func Call(c *grpc.ClientConn, method string, req []byte, opt *CallOption) ([]byte, error) {
+	ctx := createCtxWithMd(opt.Metadata)
 	var cancel context.CancelFunc
 	if opt.Timeout > 0 {
 		ctx, cancel = context.WithTimeout(ctx, opt.Timeout)
@@ -126,7 +134,7 @@ type Stream struct {
 }
 
 func NewStream(c *grpc.ClientConn, method string, req []byte, opt *CallOption, streamType int) (*Stream, error) {
-	ctx := context.Background()
+	ctx := createCtxWithMd(opt.Metadata)
 	var cancel context.CancelFunc
 	if opt.Timeout > 0 {
 		ctx, cancel = context.WithTimeout(ctx, opt.Timeout)
