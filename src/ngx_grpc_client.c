@@ -204,8 +204,20 @@ static void
 ngx_grpc_cli_thread_handler(void *data, ngx_log_t *log)
 {
     ngx_grpc_cli_thread_ctx_t     *thctx = data;
+    ngx_int_t                     i;
 
     thctx->finished_tasks = grpc_engine_wait(&thctx->finished_task_num, 100);
+    if (ngx_exiting || ngx_terminate) {
+        for (i = 0; i < thctx->finished_task_num; i++) {
+            ngx_grpc_cli_task_res_t *res = &thctx->finished_tasks[i];
+
+            assert(res->buf != NULL);
+            res->buf = (u_char *) ((int64_t) (res->buf) >> 3 << 3);
+            grpc_engine_free(res->buf);
+        }
+
+        grpc_engine_free(thctx->finished_tasks);
+    }
 }
 
 

@@ -44,13 +44,19 @@ func init() {
 	}
 }
 
+type taskResult struct {
+	id     uint64
+	result []byte
+	err    error
+}
+
 type taskQueue struct {
 	cond *sync.Cond
 
 	done bool
 
 	taskIdBuf []byte
-	tasks     []byte
+	tasks     []*taskResult
 }
 
 func NewTaskQueue() *taskQueue {
@@ -59,7 +65,7 @@ func NewTaskQueue() *taskQueue {
 	return &taskQueue{
 		cond:      cond,
 		taskIdBuf: make([]byte, 24),
-		tasks:     []byte{},
+		tasks:     []*taskResult{},
 	}
 }
 
@@ -84,36 +90,44 @@ func (self *taskQueue) Wait(timeout time.Duration) ([]byte, int) {
 	self.done = false
 	timer.Stop()
 
-	out := self.tasks
-	self.tasks = []byte{}
+	out := []byte{}
+
+	for _, res := range self.tasks {
+		var size uint64
+		var ptrRes uintptr
+
+		if res.err != nil {
+			errStr := res.err.Error()
+			size = uint64(len(errStr))
+			ptrRes = uintptr(C.CBytes([]byte(errStr))) | GrpcResTypeErr
+		} else if res.result == nil {
+			size = 0
+			ptrRes = GrpcResTypeOkNotRes
+		} else {
+			size = uint64(len(res.result))
+			ptrRes = uintptr(C.CBytes(res.result))
+		}
+
+		hostEndian.PutUint64(self.taskIdBuf, res.id)
+		hostEndian.PutUint64(self.taskIdBuf[8:16], size)
+		hostEndian.PutUint64(self.taskIdBuf[16:], uint64(ptrRes))
+		out = append(out, self.taskIdBuf...)
+	}
+
+	self.tasks = []*taskResult{}
 	self.cond.L.Unlock()
 
 	return out, len(out) / 24
 }
 
 func (self *taskQueue) Done(id uint64, result []byte, err error) {
-	var size uint64
-	var ptrRes uintptr
-
-	if err != nil {
-		errStr := err.Error()
-		size = uint64(len(errStr))
-		ptrRes = uintptr(C.CBytes([]byte(errStr))) | GrpcResTypeErr
-	} else if result == nil {
-		size = 0
-		ptrRes = GrpcResTypeOkNotRes
-	} else {
-		size = uint64(len(result))
-		ptrRes = uintptr(C.CBytes(result))
-	}
-
 	self.cond.L.Lock()
 
-	hostEndian.PutUint64(self.taskIdBuf, id)
-	hostEndian.PutUint64(self.taskIdBuf[8:16], size)
-	hostEndian.PutUint64(self.taskIdBuf[16:], uint64(ptrRes))
-
-	self.tasks = append(self.tasks, self.taskIdBuf...)
+	self.tasks = append(self.tasks, &taskResult{
+		id:     id,
+		result: result,
+		err:    err,
+	})
 
 	self.signal()
 	self.cond.L.Unlock()
