@@ -266,5 +266,9 @@ func grpc_engine_wait(taskNum *C.int, timeoutMSec C.int) unsafe.Pointer {
 	timeout := time.Duration(int(timeoutMSec)) * time.Millisecond
 	out, n := task.WaitFinishedTasks(timeout)
 	*taskNum = C.int(n)
+	if n == 0 {
+		return nil
+	}
+
 	return C.CBytes(out)
 }

@@ -216,7 +216,9 @@ ngx_grpc_cli_thread_handler(void *data, ngx_log_t *log)
             grpc_engine_free(res->buf);
         }
 
-        grpc_engine_free(thctx->finished_tasks);
+        if (thctx->finished_tasks != NULL) {
+            grpc_engine_free(thctx->finished_tasks);
+        }
     }
 }
 
@@ -344,10 +346,9 @@ ngx_grpc_cli_thread_event_handler(ngx_event_t *ev)
         ngx_grpc_cli_insert_posted_event_ctx(thctx, ev->log, res);
     }
 
-    grpc_engine_free(thctx->finished_tasks);
-    thctx->finished_tasks = NULL;
-
     if (thctx->finished_task_num > 0) {
+        grpc_engine_free(thctx->finished_tasks);
+        thctx->finished_tasks = NULL;
         ngx_post_event(thctx->posted_ev, &ngx_posted_events);
     }
 
@@ -1148,7 +1149,6 @@ ngx_grpc_cli_call(unsigned char *err_buf, size_t *err_len,
 
         n_res = grpc_engine_wait(&n, 600 * 1000);
         if (n == 0) {
-            grpc_engine_free(n_res);
             *err_len = ngx_snprintf(err_buf, *err_len, "timeout") - err_buf;
             return NGX_ERROR;
         }
