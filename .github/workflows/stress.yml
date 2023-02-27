@@ -36,7 +36,7 @@ jobs:
           cc_opt="-Werror" \
           ./build-apisix-base.sh latest
 
-        wget https://raw.githubusercontent.com/apache/apisix/3.1.0/utils/linux-install-etcd-client.sh
+        wget https://github.com/apache/apisix/blob/master/ci/linux-install-etcd-client.sh
         chmod +x linux-install-etcd-client.sh
         ./linux-install-etcd-client.sh
 
