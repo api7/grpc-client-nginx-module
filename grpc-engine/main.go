@@ -49,8 +49,10 @@ typedef struct CallOpt {
 */
 import "C"
 import (
+	"fmt"
 	"log"
 	"os"
+	"runtime/debug"
 	"sync"
 	"time"
 	"unsafe"
@@ -98,6 +100,13 @@ func reportErr(err error, errBuf unsafe.Pointer, errLen *C.size_t) {
 	*errLen = C.size_t(len(s))
 }
 
+func reportPanic(id uint64) {
+	if r := recover(); r != nil {
+		err := fmt.Errorf("%v: stack %s", r, string(debug.Stack()))
+		task.ReportFinishedTask(id, nil, err)
+	}
+}
+
 func mustFind(m *sync.Map, ref unsafe.Pointer) interface{} {
 	res, found := m.Load(ref)
 	if !found {
@@ -120,6 +129,14 @@ func grpc_engine_connect(errBuf unsafe.Pointer, errLen *C.size_t,
 		ClientKeyFile:  C.GoStringN(opt.client_key, opt.client_key_len),
 		TrustedCA:      C.GoStringN(opt.trusted_ca, opt.trusted_ca_len),
 	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			err := fmt.Errorf("%v: stack %s", r, string(debug.Stack()))
+			reportErr(err, errBuf, errLen)
+		}
+	}()
+
 	c, err := conn.Connect(target, co)
 	if err != nil {
 		reportErr(err, errBuf, errLen)
@@ -141,6 +158,12 @@ func grpc_engine_close(ref unsafe.Pointer) {
 	if !found {
 		return
 	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("%v: stack %s", r, string(debug.Stack()))
+		}
+	}()
 
 	ctx := res.(*EngineCtx)
 	conn.Close(ctx.c)
@@ -180,8 +203,11 @@ func grpc_engine_call(errBuf unsafe.Pointer, errLen *C.size_t,
 	}
 
 	go func() {
+		id := uint64(taskId)
+		defer reportPanic(id)
+
 		out, err := conn.Call(c, method, req, co)
-		task.ReportFinishedTask(uint64(taskId), out, err)
+		task.ReportFinishedTask(id, out, err)
 	}()
 }
 
@@ -202,14 +228,17 @@ func grpc_engine_new_stream(errBuf unsafe.Pointer, errLen *C.size_t,
 	}
 
 	go func() {
+		id := uint64(uintptr(sctx))
+		defer reportPanic(id)
+
 		s, err := conn.NewStream(c, method, req, co, int(streamType))
 		if err != nil {
-			task.ReportFinishedTask(uint64(uintptr(sctx)), nil, err)
+			task.ReportFinishedTask(id, nil, err)
 			return
 		}
 
 		StreamRef.Store(sctx, s)
-		task.ReportFinishedTask(uint64(uintptr(sctx)), nil, nil)
+		task.ReportFinishedTask(id, nil, nil)
 	}()
 }
 
@@ -221,6 +250,12 @@ func grpc_engine_close_stream(sctx unsafe.Pointer) {
 		return
 	}
 
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("%v: stack %s", r, string(debug.Stack()))
+		}
+	}()
+
 	s := res.(*conn.Stream)
 	s.Close()
 }
@@ -230,8 +265,11 @@ func grpc_engine_stream_recv(sctx unsafe.Pointer) {
 	s := mustFind(&StreamRef, sctx).(*conn.Stream)
 
 	go func() {
+		id := uint64(uintptr(sctx))
+		defer reportPanic(id)
+
 		out, err := s.Recv()
-		task.ReportFinishedTask(uint64(uintptr(sctx)), out, err)
+		task.ReportFinishedTask(id, out, err)
 	}()
 }
 
@@ -241,8 +279,11 @@ func grpc_engine_stream_send(sctx unsafe.Pointer, reqData unsafe.Pointer, reqLen
 	req := C.GoBytes(reqData, reqLen)
 
 	go func() {
+		id := uint64(uintptr(sctx))
+		defer reportPanic(id)
+
 		_, err := s.Send(req)
-		task.ReportFinishedTask(uint64(uintptr(sctx)), nil, err)
+		task.ReportFinishedTask(id, nil, err)
 	}()
 }
 
@@ -251,8 +292,11 @@ func grpc_engine_stream_close_send(sctx unsafe.Pointer) {
 	s := mustFind(&StreamRef, sctx).(*conn.Stream)
 
 	go func() {
+		id := uint64(uintptr(sctx))
+		defer reportPanic(id)
+
 		_, err := s.CloseSend()
-		task.ReportFinishedTask(uint64(uintptr(sctx)), nil, err)
+		task.ReportFinishedTask(id, nil, err)
 	}()
 }
 
