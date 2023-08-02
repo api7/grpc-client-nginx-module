@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main ]
   pull_request:
-
+    branches: [ main ]
 
 jobs:
   build:
@@ -39,7 +39,7 @@ jobs:
             cc_opt="-Werror" \
             ./build-apisix-base.sh latest
           sudo luarocks make ./grpc-client-nginx-module-dev-0-0.rockspec
-          cd ./grpc-engine && go build -o libgrpc_engine.so -buildmode=c-shared main.go
+          cd ./grpc-engine && GODEBUG=x509sha1=1 go build -o libgrpc_engine.so -buildmode=c-shared main.go
 
       - name: Script
         run: |
