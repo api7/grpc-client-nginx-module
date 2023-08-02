@@ -151,7 +151,7 @@ location /t {
     }
 }
 --- response_body
-failed to call: rpc error: code = Unavailable desc = connection error: desc = "transport: authentication handshake failed: x509: certificate signed by unknown authority"
+failed to call: rpc error: code = Unavailable desc = connection error: desc = "transport: authentication handshake failed: tls: failed to verify certificate: x509: certificate signed by unknown authority"
 
 
 
