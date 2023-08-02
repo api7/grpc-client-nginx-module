@@ -18,6 +18,6 @@ INSTALL ?= install
 .PHONY: install
 install:
 	if [ ! -f /usr/local/go/bin/go ]; then ./install-util.sh install_go; fi
-	cd ./grpc-engine && PATH="$(PATH):/usr/local/go/bin" GODEBUG=x509sha1=1 go build -o libgrpc_engine.so -buildmode=c-shared main.go
+	cd ./grpc-engine && PATH="$(PATH):/usr/local/go/bin" go build -o libgrpc_engine.so -buildmode=c-shared main.go
 	$(INSTALL) -m 664 ./grpc-engine/libgrpc_engine.so $(OPENRESTY_PREFIX)/
 	$(INSTALL) -m 664 lib/resty/*.lua $(OPENRESTY_PREFIX)/lualib/resty/
