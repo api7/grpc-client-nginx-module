@@ -44,4 +44,5 @@ jobs:
       - name: Script
         run: |
           export PATH=$OPENRESTY_PREFIX/nginx/sbin:$PATH
+          export GODEBUG=x509sha1=1
           prove -I. -Itest-nginx/lib -r t/
