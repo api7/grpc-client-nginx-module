@@ -1,6 +1,6 @@
 module github.com/api7/grpc-client-nginx-module
 
-go 1.19
+go 1.21
 
 require google.golang.org/grpc v1.55.1
 
