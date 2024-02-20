@@ -14,9 +14,7 @@
  * limitations under the License.
  */
 
-#include <assert.h>
-#include <dlfcn.h>
-#include <stdbool.h>
+
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
@@ -24,6 +22,9 @@
 #include <ngx_http_lua_util.h>
 #include <ngx_stream_lua_util.h>
 
+#include <assert.h>
+#include <dlfcn.h>
+#include <stdbool.h>
 
 #ifndef NGX_GRPC_CLI_ENGINE_PATH
 #define NGX_GRPC_CLI_ENGINE_PATH ""
