@@ -32,7 +32,7 @@ install_go() {
         return
     fi
 
-    GO_VER=1.19
+    GO_VER=1.22.6
     wget --quiet https://go.dev/dl/go${GO_VER}.linux-${arch}.tar.gz > /dev/null
     rm -rf /usr/local/go && tar -C /usr/local -xzf go${GO_VER}.linux-${arch}.tar.gz
     /usr/local/go/bin/go version
