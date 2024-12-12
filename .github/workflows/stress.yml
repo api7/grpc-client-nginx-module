@@ -26,7 +26,7 @@ jobs:
     - name: Before install
       run: |
         sudo apt install -y perl build-essential libssl-dev luarocks
-        docker-compose --project-directory . -f t/docker-compose.yml up -d
+        docker compose --project-directory . -f t/docker-compose.yml up -d
 
     - name: Install
       run: |

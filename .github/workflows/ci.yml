@@ -29,7 +29,7 @@ jobs:
         run: |
           sudo cpanm --notest Test::Nginx > build.log 2>&1 || (cat build.log && exit 1)
           git clone https://github.com/openresty/test-nginx.git test-nginx
-          docker-compose --project-directory . -f t/docker-compose.yml up -d
+          docker compose --project-directory . -f t/docker-compose.yml up -d
 
       - name: Install
         run: |
